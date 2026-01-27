@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { bugService } from '../services/bugService';
 
 const BugTracker = () => {
     const navigate = useNavigate();
     const [bugs, setBugs] = useState([]);
+    const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    // Filter states
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [priorityFilter, setPriorityFilter] = useState('All');
+    const [severityFilter, setSeverityFilter] = useState('All');
 
     // Form data for creating a new bug
     const [formData, setFormData] = useState({
@@ -14,7 +20,7 @@ const BugTracker = () => {
         description: '',
         priority: 'Medium',
         status: 'To Do',
-        assignee: 'Jane Doe',
+        assignee: '',
         severity: 'Major',
         project: 'HRMS Software',
         issueType: 'Bug',
@@ -22,23 +28,34 @@ const BugTracker = () => {
     });
 
     useEffect(() => {
-        fetchBugs();
-    }, []);
+        const loadInitData = async () => {
+            await Promise.all([fetchBugs(), fetchUsers()]);
+        };
+        loadInitData();
+    }, [statusFilter, priorityFilter, severityFilter]);
 
     const fetchBugs = async () => {
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('bugs')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
+            const data = await bugService.getBugs({
+                status: statusFilter,
+                priority: priorityFilter,
+                severity: severityFilter
+            });
             setBugs(data || []);
         } catch (error) {
             console.error('Error fetching bugs:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchUsers = async () => {
+        try {
+            const data = await bugService.getAllProfiles();
+            setUsers(data || []);
+        } catch (error) {
+            console.error('Error fetching users:', error);
         }
     };
 
@@ -52,8 +69,6 @@ const BugTracker = () => {
         if (!formData.title) return;
 
         try {
-            // DB Schema only has title/description currently.
-            // We omit other fields to prevent 'column not found' errors.
             const payload = {
                 title: formData.title,
                 description: formData.description,
@@ -64,16 +79,13 @@ const BugTracker = () => {
                 assignee: formData.assignee,
                 issue_type: formData.issueType,
                 environment: formData.environment,
-                // Assign reporter as current user if available, handled by RLS/Supabase Auth usually or explicitly here
             };
 
-            const { error } = await supabase.from('bugs').insert([payload]);
-            if (error) throw error;
-
+            await bugService.createBug(payload);
             setIsModalOpen(false);
             setFormData({
                 title: '', description: '', priority: 'Medium', status: 'To Do',
-                assignee: 'Jane Doe', severity: 'Major', project: 'HRMS Software', issueType: 'Bug', environment: ''
+                assignee: '', severity: 'Major', project: 'HRMS Software', issueType: 'Bug', environment: ''
             });
             fetchBugs();
         } catch (error) {
@@ -87,15 +99,17 @@ const BugTracker = () => {
             case 'High': return <span className="material-symbols-outlined text-red-500" title="High">keyboard_double_arrow_up</span>;
             case 'Medium': return <span className="material-symbols-outlined text-orange-400" title="Medium">keyboard_arrow_up</span>;
             case 'Low': return <span className="material-symbols-outlined text-blue-400" title="Low">keyboard_arrow_down</span>;
-            default: return <span className="material-symbols-outlined text-orange-400" title="Medium">keyboard_arrow_up</span>; // Default to Medium
+            case 'Highest': return <span className="material-symbols-outlined text-red-700 font-bold" title="Highest">priority_high</span>;
+            default: return <span className="material-symbols-outlined text-orange-400" title="Medium">keyboard_arrow_up</span>;
         }
     };
 
     const getStatusPillClass = (status) => {
+        // ... existing logic can remain or use simple classes
         switch (status) {
             case 'Done': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
             case 'In Progress': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-            default: return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'; // Default Gray (To Do)
+            default: return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400';
         }
     };
 
@@ -113,20 +127,46 @@ const BugTracker = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
-                    <div className="relative hidden md:block">
-                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#545095] text-lg">search</span>
-                        <input className="pl-10 pr-4 py-1.5 bg-[#f6f6f8] dark:bg-[#252440] border-none rounded-lg text-sm focus:ring-2 focus:ring-primary w-64 placeholder-[#545095] outline-none transition-all" placeholder="Search issues..." type="text" />
+                    <div className="flex items-center gap-3 mr-4">
+                        <select
+                            className="bg-slate-100 dark:bg-slate-800 border-none rounded text-xs px-2 py-1.5 outline-none"
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                        >
+                            <option value="All">All Status</option>
+                            <option value="To Do">To Do</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Done">Done</option>
+                        </select>
+                        <select
+                            className="bg-slate-100 dark:bg-slate-800 border-none rounded text-xs px-2 py-1.5 outline-none"
+                            value={priorityFilter}
+                            onChange={(e) => setPriorityFilter(e.target.value)}
+                        >
+                            <option value="All">All Priority</option>
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Highest">Highest</option>
+                        </select>
+                        <select
+                            className="bg-slate-100 dark:bg-slate-800 border-none rounded text-xs px-2 py-1.5 outline-none"
+                            value={severityFilter}
+                            onChange={(e) => setSeverityFilter(e.target.value)}
+                        >
+                            <option value="All">All Severity</option>
+                            <option value="Minor">Minor</option>
+                            <option value="Major">Major</option>
+                            <option value="Critical">Critical</option>
+                        </select>
                     </div>
+
                     <button
                         onClick={() => setIsModalOpen(true)}
                         className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
                     >
                         <span className="material-symbols-outlined">add</span> Create Bug
                     </button>
-                    <div className="flex gap-1">
-                        <button className="p-2 hover:bg-[#f6f6f8] dark:hover:bg-[#252440] rounded-lg text-[#545095] transition-colors"><span className="material-symbols-outlined">notifications</span></button>
-                        <button className="p-2 hover:bg-[#f6f6f8] dark:hover:bg-[#252440] rounded-lg text-[#545095] transition-colors"><span className="material-symbols-outlined">help</span></button>
-                    </div>
                 </div>
             </header>
 
@@ -153,14 +193,15 @@ const BugTracker = () => {
                                 <th className="p-4 text-[11px] font-bold uppercase text-[#545095] dark:text-[#a19ec4] tracking-wider w-24">Priority</th>
                                 <th className="p-4 text-[11px] font-bold uppercase text-[#545095] dark:text-[#a19ec4] tracking-wider w-32">Status</th>
                                 <th className="p-4 text-[11px] font-bold uppercase text-[#545095] dark:text-[#a19ec4] tracking-wider w-40 hidden xl:table-cell">Reporter</th>
+                                <th className="p-4 text-[11px] font-bold uppercase text-[#545095] dark:text-[#a19ec4] tracking-wider w-40 hidden xl:table-cell">Assignee</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-[#e8e8f3] dark:divide-[#2a293d]">
                             {loading ? (
-                                <tr><td colSpan="5" className="p-12 text-center text-gray-400">Loading bugs...</td></tr>
+                                <tr><td colSpan="6" className="p-12 text-center text-gray-400">Loading bugs...</td></tr>
                             ) : bugs.length === 0 ? (
                                 <tr>
-                                    <td colSpan="5" className="p-12 text-center">
+                                    <td colSpan="6" className="p-12 text-center">
                                         <div className="flex flex-col items-center justify-center">
                                             <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
                                                 <span className="material-symbols-outlined text-4xl text-primary">check_circle</span>
@@ -185,6 +226,7 @@ const BugTracker = () => {
                                             </span>
                                         </td>
                                         <td className="p-4 text-sm text-[#545095] hidden xl:table-cell">Jane Doe</td>
+                                        <td className="p-4 text-sm text-[#545095] hidden xl:table-cell">{bug.assignee || 'Unassigned'}</td>
                                     </tr>
                                 ))
                             )}
@@ -331,16 +373,39 @@ const BugTracker = () => {
                                 </div>
                             </div>
 
-                            <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Environment</label>
-                                <input
-                                    name="environment"
-                                    value={formData.environment}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-800 py-2.5 px-3 text-sm focus:ring-primary focus:border-primary outline-none"
-                                    placeholder="e.g. Production, iOS 15, Chrome 98"
-                                    type="text"
-                                />
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Assignee</label>
+                                    <div className="relative">
+                                        <select
+                                            name="assignee"
+                                            value={formData.assignee}
+                                            onChange={handleInputChange}
+                                            className="w-full appearance-none rounded-lg border-slate-200 dark:border-slate-700 dark:bg-slate-800 py-2.5 pl-3 pr-10 text-sm focus:ring-primary focus:border-primary outline-none"
+                                        >
+                                            <option value="">Unassigned</option>
+                                            {users.map(user => (
+                                                <option key={user.id} value={`${user.first_name} ${user.last_name}`}>
+                                                    {user.first_name} {user.last_name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                                            <span className="material-symbols-outlined">expand_more</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Environment</label>
+                                    <input
+                                        name="environment"
+                                        value={formData.environment}
+                                        onChange={handleInputChange}
+                                        className="w-full rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-800 py-2.5 px-3 text-sm focus:ring-primary focus:border-primary outline-none"
+                                        placeholder="e.g. Production, iOS 15"
+                                        type="text"
+                                    />
+                                </div>
                             </div>
 
                             <div className="flex flex-col gap-1.5">
@@ -348,7 +413,7 @@ const BugTracker = () => {
                                 <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg p-8 flex flex-col items-center justify-center gap-2 hover:border-primary transition-colors bg-slate-50 dark:bg-slate-800/50 cursor-pointer">
                                     <span className="material-symbols-outlined text-slate-400 text-3xl">cloud_upload</span>
                                     <div className="text-center">
-                                        <p className="text-sm text-slate-600 dark:text-slate-400">Drag and drop files here or <span class="text-primary font-bold">browse</span></p>
+                                        <p className="text-sm text-slate-600 dark:text-slate-400">Drag and drop files here or <span className="text-primary font-bold">browse</span></p>
                                         <p className="text-[11px] text-slate-400 mt-1">Maximum size: 25MB (PNG, JPG, PDF, TXT)</p>
                                     </div>
                                 </div>

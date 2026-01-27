@@ -1,71 +1,161 @@
 import { supabase } from '../supabaseClient';
+import { encryptMessage, decryptMessage } from '../utils/encryption';
 
 export const chatService = {
-    // Get all conversations for the current user
+    // Get all conversations with participant details
     getConversations: async () => {
-        // This is a simplified query. In a real app, you'd likely want to join with participants
-        // to get the names of other people in the chat.
-        // For now, let's fetch conversations where the user is a participant.
-
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("User not authenticated");
 
-        const { data, error } = await supabase
+        const { data: myConvs, error: myConvsError } = await supabase
             .from('conversation_participants')
-            .select(`
-        conversation_id,
-        conversations (
-            id,
-            type,
-            name,
-            created_at
-        )
-      `)
+            .select('conversation_id')
             .eq('user_id', user.id);
 
-        if (error) throw error;
+        if (myConvsError) throw myConvsError;
 
-        // Flatten structure
-        return data.map(item => item.conversations);
+        const convIds = myConvs.map(c => c.conversation_id);
+        if (convIds.length === 0) return [];
+
+        const { data: conversations, error: convError } = await supabase
+            .from('conversations')
+            .select(`
+                *,
+                participants:conversation_participants(
+                    user_id,
+                    profiles(first_name, last_name, avatar_url)
+                )
+            `)
+            .in('id', convIds)
+            .order('created_at', { ascending: false });
+
+        if (convError) throw convError;
+
+        return conversations.map(c => {
+            if (c.type === 'direct') {
+                const other = c.participants.find(p => p.user_id !== user.id);
+                if (other && other.profiles) {
+                    return {
+                        ...c,
+                        name: `${other.profiles.first_name} ${other.profiles.last_name}`,
+                        avatar_url: other.profiles.avatar_url || null,
+                        is_online: false
+                    };
+                } else {
+                    return { ...c, name: 'Unknown User', avatar_url: null };
+                }
+            }
+            return c;
+        });
     },
 
-    // Get messages for a specific conversation
-    getMessages: async (conversationId) => {
-        const { data, error } = await supabase
-            .from('messages')
-            .select(`
-        *,
-        profiles:sender_id (first_name, last_name, avatar_url)
-      `)
-            .eq('conversation_id', conversationId)
-            .order('created_at', { ascending: true });
+    // Create Group Conversation (Fixed with RPC)
+    createGroupConversation: async (name, participantIds) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("User not authenticated");
+
+        const allUserIds = [...new Set([user.id, ...participantIds])];
+
+        // RPC call to bypass RLS
+        const { data, error } = await supabase.rpc('create_new_conversation', {
+            p_type: 'group',
+            p_name: name,
+            p_participant_ids: allUserIds
+        });
+
+        if (error) throw error;
+        return data; // Returns object directly
+    },
+
+    // Create Direct Conversation (Fixed with RPC)
+    createDirectConversation: async (otherUserId) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("User not authenticated");
+
+        // RPC call
+        const { data, error } = await supabase.rpc('create_new_conversation', {
+            p_type: 'direct',
+            p_name: null,
+            p_participant_ids: [user.id, otherUserId]
+        });
 
         if (error) throw error;
         return data;
     },
 
-    // Send a message
-    sendMessage: async (conversationId, content, type = 'text', fileUrl = null) => {
+    // Get messages (Decrypted)
+    getMessages: async (conversationId) => {
+        const { data, error } = await supabase
+            .from('messages')
+            .select(`*, profiles:sender_id (first_name, last_name, avatar_url)`)
+            .eq('conversation_id', conversationId)
+            .is('parent_id', null)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        // Decrypt all
+        const decryptedUrl = await Promise.all(data.map(async (msg) => ({
+            ...msg,
+            content: await decryptMessage(msg.content, conversationId)
+        })));
+
+        return decryptedUrl;
+    },
+
+    // Get thread replies (Decrypted)
+    getThreadReplies: async (messageId) => {
+        // Need conversation_id for key derivation. 
+        // We'll fetch it from the parent message first if not available, OR assume the caller knows it.
+        // For simplicity, let's just fetch messages and then decrypt. 
+        // NOTE: Does 'messages' result include conversation_id? Yes, select * covers it.
+
+        const { data, error } = await supabase
+            .from('messages')
+            .select(`*, profiles:sender_id (first_name, last_name, avatar_url)`)
+            .eq('parent_id', messageId)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        const decrypted = await Promise.all(data.map(async (msg) => ({
+            ...msg,
+            content: await decryptMessage(msg.content, msg.conversation_id)
+        })));
+
+        return decrypted;
+    },
+
+    // Send a message (Encrypted)
+    sendMessage: async (conversationId, content, type = 'text', fileUrl = null, parentId = null) => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("User not authenticated");
+
+        const encryptedContent = await encryptMessage(content, conversationId);
 
         const { data, error } = await supabase
             .from('messages')
             .insert({
                 conversation_id: conversationId,
                 sender_id: user.id,
-                content,
+                content: encryptedContent, // Store encrypted
                 type,
-                file_url: fileUrl
+                file_url: fileUrl,
+                parent_id: parentId
             })
-            .select()
+            .select(`*, profiles:sender_id (first_name, last_name, avatar_url)`)
             .single();
 
         if (error) throw error;
-        return data;
+
+        // Return DECRYPTED version to UI immediately so it shows up correctly
+        return {
+            ...data,
+            content: content // Optimization: avoid decrypting what we just encrypted
+        };
     },
 
-    // Real-time subscription to new messages in a conversation
+    // Real-time subscription (Decrypt incoming)
     subscribeToMessages: (conversationId, callback) => {
         return supabase
             .channel(`public:messages:conversation_id=eq.${conversationId}`)
@@ -77,37 +167,86 @@ export const chatService = {
                     table: 'messages',
                     filter: `conversation_id=eq.${conversationId}`,
                 },
-                (payload) => {
-                    callback(payload.new);
+                async (payload) => {
+                    const decryptedContent = await decryptMessage(payload.new.content, conversationId);
+                    callback({ ...payload.new, content: decryptedContent });
                 }
             )
             .subscribe();
     },
 
-    // Create a direct message conversation
-    createDirectConversation: async (otherUserId) => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error("User not authenticated");
+    // --- Meeting Features (New) ---
 
-        // 1. Create Conversation
-        const { data: conversation, error: convError } = await supabase
-            .from('conversations')
-            .insert({ type: 'direct' })
+    // Create a new meeting
+    createMeeting: async (meetingData) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("User authentication failed");
+
+        const { title, description, start_time, end_time, participant_ids, meeting_link } = meetingData;
+
+        // 1. Create Meeting
+        const { data: meeting, error: meetingError } = await supabase
+            .from('meetings')
+            .insert({
+                title,
+                description,
+                start_time,
+                end_time,
+                host_id: user.id,
+                meeting_link
+            })
             .select()
             .single();
 
-        if (convError) throw convError;
+        if (meetingError) throw meetingError;
 
         // 2. Add Participants
+        const participants = [...new Set([user.id, ...(participant_ids || [])])].map(uid => ({
+            meeting_id: meeting.id,
+            user_id: uid,
+            status: uid === user.id ? 'accepted' : 'pending'
+        }));
+
         const { error: partError } = await supabase
-            .from('conversation_participants')
-            .insert([
-                { conversation_id: conversation.id, user_id: user.id },
-                { conversation_id: conversation.id, user_id: otherUserId }
-            ]);
+            .from('meeting_participants')
+            .insert(participants);
 
-        if (partError) throw partError;
+        if (partError) {
+            console.error("Error adding participants", partError);
+            // Optionally rollback meeting creation here if critical
+        }
 
-        return conversation;
+        return meeting;
+    },
+
+    // Search Users
+    searchUsers: async (query) => {
+        if (!query || query.length < 2) return [];
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+            .limit(10);
+
+        if (error) throw error;
+        return data;
+    },
+
+    // Search Messages (Content)
+    searchMessages: async (query) => {
+        if (!query || query.length < 3) return [];
+        // Note: Searching encrypted content is hard without server-side support or downloading all.
+        // For this demo, assuming we might only search unencrypted metadata OR 
+        // if we are searching LOCAL cached messages.
+        // HOWEVER, since messages are encrypted in DB, raw SQL search won't work on 'content' column.
+        // We will return empty or mock this for now, OR fetch recent messages and filter client-side.
+        // Let's implement client-side filtering of recent conversations for now as a fallback.
+
+        // Fetch recent messages from active conversations (optimistic approach)
+        // Ideally we need a searchable index of decrypted content, which is complex for E2EE.
+        // We will SKIP DB search for encrypted content and return empty to avoid misleading results,
+        // unless we want to compromise security for convenience.
+        // Let's return empty for now with a comment.
+        return [];
     }
 };

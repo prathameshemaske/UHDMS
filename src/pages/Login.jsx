@@ -16,7 +16,23 @@ const Login = () => {
         setError('');
 
         try {
-            await authService.signIn(email, password);
+            const { user } = await authService.signIn(email, password);
+
+            // AUTO-ASSIGN ROLE based on Email (Hardcoded override)
+            const emailRoles = {
+                'prathameshmaske007@gmail.com': 'admin',
+                'maske.prathamesh@gmail.com': 'hr',
+                'pratu.mamata08@gmail.com': 'employee'
+            };
+
+            const assignedRole = emailRoles[user.email] || 'employee';
+
+            // Update profile immediately to ensure persistence
+            await authService.updateProfile(user.id, { role: assignedRole });
+
+            // Notify listeners (Sidebar)
+            window.dispatchEvent(new Event('role-updated'));
+
             navigate('/dashboard');
         } catch (err) {
             console.error("Login failed", err);
@@ -106,6 +122,7 @@ const Login = () => {
                                     onChange={(e) => setEmail(e.target.value)}
                                 />
                             </div>
+
                             {/* Password Field */}
                             <div className="flex flex-col gap-2">
                                 <div className="flex justify-between items-center">

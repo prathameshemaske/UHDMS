@@ -27,9 +27,8 @@ const TaxDeclaration = () => {
                         <div className="flex flex-1 justify-end gap-8">
                             <div className="flex items-center gap-9">
                                 <Link className="text-[#121117] dark:text-gray-300 text-sm font-medium leading-normal" to="/">Dashboard</Link>
-                                <a className="text-[#121117] dark:text-gray-300 text-sm font-medium leading-normal" href="#">Employee Management</a>
+                                <Link className="text-[#121117] dark:text-gray-300 text-sm font-medium leading-normal hover:text-primary transition-colors" to="/employees">Employee Management</Link>
                                 <Link className="text-primary dark:text-primary text-sm font-bold leading-normal border-b-2 border-primary" to="/tax-declaration">Tax Management</Link>
-                                <a className="text-[#121117] dark:text-gray-300 text-sm font-medium leading-normal" href="#">Payroll</a>
                             </div>
                             <div className="flex gap-2">
                                 <button className="flex items-center justify-center rounded-lg h-10 w-10 bg-[#f1f0f4] dark:bg-[#2a2a3a] text-[#121117] dark:text-white">

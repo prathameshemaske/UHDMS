@@ -1,262 +1,442 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { testRunService } from '../services/testRunService';
+import { bugService } from '../services/bugService';
+import { authService } from '../services/authService';
 
 const Executions = () => {
-    // Mock Step Data with State
-    const [steps, setSteps] = useState([
-        {
-            id: 1,
-            action: 'Enter test_user@example.com in the email field.',
-            expected: 'Email field accepts input and shows no errors.',
-            result: 'pass' // 'pass', 'fail', 'block', null
-        },
-        {
-            id: 2,
-            action: 'Enter the valid password and click "Login".',
-            expected: 'Application validates credentials against database.',
-            result: 'fail'
-        },
-        {
-            id: 3,
-            action: 'Verify redirection to Dashboard.',
-            expected: 'User is redirected to /dashboard.',
-            result: null
-        }
-    ]);
+    const { id: runId } = useParams();
+    const navigate = useNavigate();
 
-    const handleStepResult = (id, result) => {
-        setSteps(prev => prev.map(s => s.id === id ? { ...s, result } : s));
+    // State for Runner
+    const [runData, setRunData] = useState(null);
+    const [results, setResults] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    // Bug Reporting Modal State
+    const [bugModalOpen, setBugModalOpen] = useState(false);
+    const [selectedResultForBug, setSelectedResultForBug] = useState(null);
+    const [bugTitle, setBugTitle] = useState('');
+    const [bugDescription, setBugDescription] = useState('');
+    const [isReportingBug, setIsReportingBug] = useState(false);
+
+    // State for List View
+    const [executionHistory, setExecutionHistory] = useState([]);
+
+    useEffect(() => {
+        if (runId) {
+            loadRunDetails();
+        } else {
+            loadHistory();
+        }
+    }, [runId]);
+
+    const loadHistory = async () => {
+        try {
+            const data = await testRunService.getAll();
+            setExecutionHistory(data);
+        } catch (error) {
+            console.error("Failed to load history", error);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const getRowClass = (result) => {
-        switch (result) {
-            case 'pass': return 'bg-green-50/30 dark:bg-green-900/10';
-            case 'fail': return 'bg-red-50/30 dark:bg-red-900/10';
-            case 'block': return 'bg-orange-50/30 dark:bg-orange-900/10';
-            default: return 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30';
+    const loadRunDetails = async () => {
+        try {
+            const { run, results } = await testRunService.getRunDetails(runId);
+            setRunData(run);
+            setResults(results);
+        } catch (error) {
+            console.error("Failed to load run", error);
+            alert("Error loading run details");
+            navigate('/executions');
+        } finally {
+            setLoading(false);
         }
     };
 
-    return (
-        <div className="bg-[#f6f6f8] dark:bg-[#121121] font-display text-slate-900 dark:text-slate-100 antialiased h-screen overflow-hidden flex flex-col">
-            <header className="flex h-14 items-center justify-between border-b border-solid border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121121] px-6 shrink-0 z-20">
-                <div className="flex items-center gap-6">
+    const handleStepStatusChange = async (resultItem, stepId, newStatus) => {
+        // 1. Optimistic Update Logic
+        const updatedStepResults = [...(resultItem.step_results || [])];
+        const stepIndex = updatedStepResults.findIndex(r => r.step_id === stepId);
+
+        if (stepIndex >= 0) {
+            updatedStepResults[stepIndex] = { ...updatedStepResults[stepIndex], status: newStatus };
+        } else {
+            updatedStepResults.push({ step_id: stepId, status: newStatus });
+        }
+
+        // 2. Calculate Aggregate Status
+        const steps = resultItem.test_case?.test_steps || [];
+        let aggregateStatus = 'Not Run';
+
+        let hasFail = false;
+        let hasBlocked = false;
+        let allPass = true;
+        let hasRun = false; // Has at least one step run
+
+        if (steps.length > 0) {
+            steps.forEach(step => {
+                const res = updatedStepResults.find(r => r.step_id === step.id);
+                const sStatus = res?.status || 'Not Run';
+
+                if (sStatus !== 'Not Run') hasRun = true;
+                if (sStatus === 'Fail') hasFail = true;
+                if (sStatus === 'Blocked') hasBlocked = true;
+                if (sStatus !== 'Pass') allPass = false;
+            });
+
+            // Check if ALL steps have been run (for full Pass)
+            const allStepsRun = steps.every(s => {
+                const res = updatedStepResults.find(r => r.step_id === s.id);
+                return res && res.status !== 'Not Run';
+            });
+
+            if (hasFail) aggregateStatus = 'Fail';
+            else if (hasBlocked) aggregateStatus = 'Blocked';
+            else if (allPass && allStepsRun) aggregateStatus = 'Pass';
+            else if (hasRun) aggregateStatus = 'In Progress'; // Some Pass, Some Not Run
+            else aggregateStatus = 'Not Run';
+        }
+
+        // 3. Update Local State
+        setResults(prev => prev.map(r =>
+            r.id === resultItem.id
+                ? { ...r, status: aggregateStatus, step_results: updatedStepResults }
+                : r
+        ));
+
+        // 4. Persist to Backend
+        try {
+            // Update individual step status
+            // Note: We need to pass the FULL array for the update since we store JSONB
+            await testRunService.updateStepStatus(resultItem.id, stepId, newStatus, resultItem.step_results);
+
+            // If aggregate status changed, update the Result row
+            if (aggregateStatus !== resultItem.status) {
+                await testRunService.updateResult(resultItem.id, aggregateStatus, resultItem.comment, resultItem.bug_id);
+            }
+        } catch (error) {
+            console.error("Failed to update status", error);
+            // Revert on error could be added here
+        }
+    };
+
+    const openBugModal = (item) => {
+        setSelectedResultForBug(item);
+        setBugTitle(`Failed: ${item.test_case?.title || 'Unknown Case'}`);
+        setBugDescription(`**Steps to Reproduce:**\n\n(Imported from Test Case #${item.case_id})\n\n**Expected Result:**\n...\n\n**Actual Result:**\nFailed during execution run #${runId}.`);
+        setBugModalOpen(true);
+    };
+
+    const handleReportBug = async () => {
+        if (!selectedResultForBug) return;
+        setIsReportingBug(true);
+        try {
+            const currentUser = await authService.getCurrentUser();
+
+            // 1. Create Bug
+            const newBug = await bugService.createBug({
+                title: bugTitle,
+                description: bugDescription,
+                status: 'To Do',
+                priority: selectedResultForBug.test_case?.priority || 'Medium',
+                severity: 'Major',
+                reporter_id: currentUser?.id,
+                project: 'UHDMS', // Default for now
+                environment: runData.environment || 'QA'
+            });
+
+            // 2. Link Bug to Result
+            await testRunService.updateResult(selectedResultForBug.id, 'Fail', selectedResultForBug.comment, newBug.id);
+
+            // 3. Update UI
+            setResults(prev => prev.map(r =>
+                r.id === selectedResultForBug.id
+                    ? { ...r, status: 'Fail', bug: newBug, bug_id: newBug.id }
+                    : r
+            ));
+
+            setBugModalOpen(false);
+            alert("Bug Reported Successfully!");
+        } catch (error) {
+            console.error(error);
+            alert("Failed to report bug: " + error.message);
+        } finally {
+            setIsReportingBug(false);
+        }
+    };
+
+    const getStatusColor = (status) => {
+        switch (status?.toLowerCase()) {
+            case 'pass': return 'bg-green-100 text-green-700 border-green-200';
+            case 'fail': return 'bg-red-100 text-red-700 border-red-200';
+            case 'blocked': return 'bg-orange-100 text-orange-700 border-orange-200';
+            default: return 'bg-slate-100 text-slate-500 border-slate-200';
+        }
+    };
+
+    // --- LIST VIEW ---
+    if (!runId) {
+        return (
+            <div className="bg-[#f6f6f8] dark:bg-[#121121] min-h-screen font-sans text-slate-900 dark:text-slate-100 flex flex-col">
+                <header className="flex h-16 items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6">
                     <div className="flex items-center gap-3">
                         <div className="size-8 text-[#5048e5]">
-                            <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M24 45.8096C19.6865 45.8096 15.4698 44.5305 11.8832 42.134C8.29667 39.7376 5.50128 36.3314 3.85056 32.3462C2.19985 28.361 1.76794 23.9758 2.60947 19.7452C3.451 15.5145 5.52816 11.6284 8.57829 8.5783C11.6284 5.52817 15.5145 3.45101 19.7452 2.60948C23.9758 1.76795 28.361 2.19986 32.3462 3.85057C36.3314 5.50129 39.7376 8.29668 42.134 11.8833C44.5305 15.4698 45.8096 19.6865 45.8096 24L24 24L24 45.8096Z" fill="currentColor"></path>
-                            </svg>
+                            <svg fill="currentColor" viewBox="0 0 48 48"><path d="M6 6H42L36 24L42 42H6L12 24L6 6Z"></path></svg>
                         </div>
-                        <h2 className="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-tight">UHDMS</h2>
+                        <h2 className="text-lg font-bold">Test Runs</h2>
                     </div>
-                    <nav className="hidden md:flex items-center gap-6">
-                        <Link className="text-slate-600 dark:text-slate-400 text-sm font-medium hover:text-[#5048e5] transition-colors" to="/">Dashboard</Link>
-                        <Link className="text-slate-600 dark:text-slate-400 text-sm font-medium hover:text-[#5048e5] transition-colors" to="/test-suites">Test Cases</Link>
-                        <Link className="text-[#5048e5] text-sm font-semibold border-b-2 border-[#5048e5] py-4" to="/executions">Executions</Link>
-                        <Link className="text-slate-600 dark:text-slate-400 text-sm font-medium hover:text-[#5048e5] transition-colors" to="/repository">Repository</Link>
+                    <nav className="flex items-center gap-6">
+                        <Link className="text-slate-500 hover:text-[#5048e5]" to="/">Dashboard</Link>
+                        <Link className="text-slate-500 hover:text-[#5048e5]" to="/repository">Repository</Link>
+                        <Link className="text-[#5048e5] font-semibold" to="/executions">Executions</Link>
                     </nav>
+                </header>
+                <main className="p-8 max-w-5xl mx-auto w-full">
+                    <div className="flex justify-between items-center mb-6">
+                        <h1 className="text-2xl font-bold">Execution History</h1>
+                        <Link to="/repository" className="px-4 py-2 bg-[#5048e5] text-white rounded-lg font-bold text-sm hover:bg-indigo-700">
+                            Start New Run (Repo)
+                        </Link>
+                    </div>
+                    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
+                                <tr>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">Run ID</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">Title</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">Status</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">Date</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">Executed By</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {loading ? <tr><td colSpan="5" className="p-6 text-center text-slate-500">Loading...</td></tr> :
+                                    executionHistory.map(run => (
+                                        <tr key={run.id} onClick={() => navigate(`/executions/${run.id}`)} className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                                            <td className="px-6 py-4 text-xs font-mono text-slate-500">#{run.id.slice(0, 6)}</td>
+                                            <td className="px-6 py-4 font-medium">{run.title}</td>
+                                            <td className="px-6 py-4">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold border ${run.status === 'Completed' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
+                                                    {run.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-slate-500">{new Date(run.created_at).toLocaleDateString()}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-500">{run.executed_by_profile?.first_name || 'User'}</td>
+                                        </tr>
+                                    ))}
+                                {!loading && executionHistory.length === 0 && (
+                                    <tr><td colSpan="5" className="p-8 text-center text-slate-400 italic">No executions yet.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
+    // --- RUNNER VIEW ---
+    if (loading) return <div className="p-8 text-center">Loading run details...</div>;
+    if (!runData) return <div className="p-8 text-center text-red-500">Run not found.</div>;
+
+    const stats = {
+        passed: results.filter(r => r.status === 'Pass').length,
+        failed: results.filter(r => r.status === 'Fail').length,
+        total: results.length
+    };
+    const progress = stats.total > 0 ? ((stats.passed + stats.failed) / stats.total) * 100 : 0;
+
+    return (
+        <div className="bg-[#f6f6f8] dark:bg-[#121121] font-sans text-slate-900 dark:text-slate-100 antialiased h-screen overflow-hidden flex flex-col">
+            {/* Removed Complete Run button as requested */}
+            <header className="flex h-16 items-center justify-between border-b border-solid border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121121] px-6 shrink-0 z-20">
+                <div className="flex items-center gap-4">
+                    <Link to="/executions" className="text-slate-500 hover:text-slate-900"><span className="material-symbols-outlined">arrow_back</span></Link>
+                    <h2 className="text-lg font-bold">Execution Runner</h2>
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-mono rounded">RUN-{runId.slice(0, 6)}</span>
                 </div>
                 <div className="flex items-center gap-4">
-                    <div className="flex gap-1">
-                        <button className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400">
-                            <span className="material-symbols-outlined">notifications</span>
-                        </button>
-                        <button className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400">
-                            <span className="material-symbols-outlined">settings</span>
-                        </button>
-                    </div>
-                    <div className="h-8 w-8 rounded-full bg-[#5048e5]/10 border border-[#5048e5]/20 flex items-center justify-center text-[#5048e5] font-bold text-xs">
-                        JD
+                    <div className="text-right mr-4">
+                        <span className="text-sm font-bold block">{progress.toFixed(0)}% Complete</span>
+                        <div className="w-32 bg-slate-100 h-1.5 rounded-full mt-1 overflow-hidden">
+                            <div className="bg-[#5048e5] h-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                        </div>
                     </div>
                 </div>
             </header>
+
             <main className="flex flex-1 overflow-hidden">
                 <div className="flex-1 flex flex-col min-w-0 bg-[#f6f6f8] dark:bg-[#121121]/50">
                     <div className="bg-white dark:bg-[#121121] px-8 py-6 border-b border-slate-200 dark:border-slate-800">
-                        <div className="flex items-center gap-2 text-sm text-slate-500 mb-2">
-                            <a className="hover:text-[#5048e5] transition-colors" href="#">Executions</a>
-                            <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-                            <span>Active Session</span>
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h1 className="text-2xl font-bold mb-1">{runData.title}</h1>
+                                <p className="text-sm text-slate-500">Environment: {runData.environment || 'QA'}</p>
+                            </div>
                         </div>
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                            <div className="flex items-start gap-4">
-                                <span className="mt-1 px-2 py-0.5 bg-[#5048e5]/10 text-[#5048e5] font-mono font-bold text-sm rounded">TC-101</span>
-                                <div>
-                                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">User Login with Valid Credentials</h1>
-                                    <div className="flex items-center gap-4 mt-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Priority:</span>
-                                            <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">High</span>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+                        <div className="space-y-6">
+                            {results.map((item, index) => (
+                                <div key={item.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                                    <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-start bg-slate-50/50">
+                                        <div className="flex gap-3">
+                                            <span className="flex items-center justify-center size-6 rounded bg-slate-200 text-slate-600 text-xs font-bold">{index + 1}</span>
+                                            <div>
+                                                <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{item.test_case?.title || 'Unknown Case'}</h3>
+                                                <div className="flex gap-2 text-sm text-slate-500 items-center">
+                                                    <span className={`px-2 py-0.5 rounded textxs font-bold border ${getStatusColor(item.status)}`}>
+                                                        {item.status || 'Not Run'}
+                                                    </span>
+                                                    <span>Priority: {item.test_case?.priority}</span>
+                                                    {item.bug_id && (
+                                                        <span className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100 ml-2">
+                                                            <span className="material-symbols-outlined text-[14px]">bug_report</span>
+                                                            Bug #{item.bug ? item.bug.id : item.bug_id}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Assignee:</span>
-                                            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">John Doe</span>
+                                        <div>
+                                            {item.status === 'Fail' && !item.bug_id && (
+                                                <button
+                                                    onClick={() => openBugModal(item)}
+                                                    className="text-sm font-bold text-red-600 hover:underline flex items-center gap-1 bg-red-50 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]">bug_report</span> Report Bug
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Environment</label>
-                                <div className="relative min-w-[200px]">
-                                    <select className="w-full bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-10 text-sm font-medium focus:ring-[#5048e5] focus:border-[#5048e5] transition-all appearance-none outline-none">
-                                        <option defaultValue>QA-Build-V1.2</option>
-                                        <option>Staging-Main</option>
-                                        <option>Prod-Mirror</option>
-                                    </select>
-                                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">expand_more</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
-                        <div className="bg-white dark:bg-[#121121] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-                                    <tr>
-                                        <th className="py-4 px-6 text-[11px] font-bold text-slate-400 uppercase w-20 text-center">Step #</th>
-                                        <th className="py-4 px-6 text-[11px] font-bold text-slate-400 uppercase">Action</th>
-                                        <th className="py-4 px-6 text-[11px] font-bold text-slate-400 uppercase">Expected Result</th>
-                                        <th className="py-4 px-6 text-[11px] font-bold text-slate-400 uppercase w-64 text-center">Result</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                    {steps.map((step) => (
-                                        <tr key={step.id} className={`transition-colors ${getRowClass(step.result)}`}>
-                                            <td className="py-6 px-6 text-sm font-bold text-slate-400 text-center align-top">{step.id}</td>
-                                            <td className="py-6 px-6 text-sm text-slate-700 dark:text-slate-300 align-top">
-                                                {step.id === 1 && <>Enter <span className="bg-[#5048e5]/5 text-[#5048e5] px-1.5 py-0.5 rounded font-mono text-xs">test_user@example.com</span> in the email field.</>}
-                                                {step.id === 2 && <>Enter the valid password and click <span className="italic font-medium text-slate-900 dark:text-white">"Login"</span>.</>}
-                                                {step.id === 3 && <>Verify redirection to Dashboard.</>}
-                                            </td>
-                                            <td className="py-6 px-6 text-sm text-slate-600 dark:text-slate-400 align-top">
-                                                {step.expected}
-                                            </td>
-                                            <td className="py-6 px-6 align-top">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button
-                                                        onClick={() => handleStepResult(step.id, 'pass')}
-                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-all ${step.result === 'pass' ? 'bg-green-500 text-white' : 'border border-slate-200 dark:border-slate-700 hover:bg-green-50 dark:hover:bg-green-900/20 text-slate-400 hover:text-green-500'}`}
-                                                    >
-                                                        {step.result === 'pass' && <span className="material-symbols-outlined text-[16px]">check_circle</span>} Pass
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleStepResult(step.id, 'fail')}
-                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-all ${step.result === 'fail' ? 'bg-red-500 text-white' : 'border border-slate-200 dark:border-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500'}`}
-                                                    >
-                                                        {step.result === 'fail' && <span className="material-symbols-outlined text-[16px]">cancel</span>} Fail
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleStepResult(step.id, 'block')}
-                                                        className={`px-3 py-1.5 border border-slate-200 dark:border-slate-700 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-slate-400 hover:text-orange-500 rounded-lg text-xs font-bold transition-all ${step.result === 'block' ? 'bg-orange-500 text-white border-none' : ''}`}
-                                                    >
-                                                        Block
-                                                    </button>
-                                                </div>
-                                                {step.result === 'fail' && (
-                                                    <div className="mt-3 flex justify-center">
-                                                        <button className="flex items-center gap-1.5 px-4 py-1.5 bg-[#5048e5] text-white rounded-lg text-xs font-bold hover:bg-[#5048e5]/90 transition-all shadow-md">
-                                                            <span className="material-symbols-outlined text-[16px]">bug_report</span> Log Bug
-                                                        </button>
-                                                    </div>
+
+                                    {/* Test Steps Table */}
+                                    <div className="p-0">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                                                <tr>
+                                                    <th className="py-3 px-6 text-xs font-bold text-slate-400 uppercase w-16">#</th>
+                                                    <th className="py-3 px-6 text-xs font-bold text-slate-400 uppercase">Action</th>
+                                                    <th className="py-3 px-6 text-xs font-bold text-slate-400 uppercase">Expected Result</th>
+                                                    <th className="py-3 px-6 text-xs font-bold text-slate-400 uppercase w-40">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                {item.test_case?.test_steps?.length > 0 ? (
+                                                    item.test_case.test_steps.map((step, sIndex) => {
+                                                        const stepResult = item.step_results?.find(r => r.step_id === step.id);
+                                                        const currentStatus = stepResult?.status || 'Not Run';
+
+                                                        return (
+                                                            <tr key={step.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                                                                <td className="py-4 px-6 text-sm text-slate-500 font-mono">{sIndex + 1}</td>
+                                                                <td className="py-4 px-6 text-sm text-slate-700 dark:text-slate-300">{step.action}</td>
+                                                                <td className="py-4 px-6 text-sm text-slate-700 dark:text-slate-300">{step.expected_result}</td>
+                                                                <td className="py-4 px-6">
+                                                                    <select
+                                                                        value={currentStatus}
+                                                                        onChange={(e) => handleStepStatusChange(item, step.id, e.target.value)}
+                                                                        className={`w-full px-2 py-1.5 rounded-md text-xs font-bold border transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/20 ${currentStatus === 'Pass' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                                            currentStatus === 'Fail' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                                                currentStatus === 'Blocked' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                                                                    'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'
+                                                                            }`}
+                                                                    >
+                                                                        <option value="Not Run">Not Run</option>
+                                                                        <option value="Pass">Pass</option>
+                                                                        <option value="Fail">Fail</option>
+                                                                        <option value="Blocked">Blocked</option>
+                                                                    </select>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <tr>
+                                                        <td colSpan="4" className="py-6 text-center text-slate-400 text-sm italic">
+                                                            No steps defined for this test case.
+                                                        </td>
+                                                    </tr>
                                                 )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div className="px-8 py-4 bg-white dark:bg-[#121121] border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                        <button className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
-                            <span className="material-symbols-outlined">close</span>
-                            Discard Run
-                        </button>
-                        <div className="flex items-center gap-3">
-                            <button className="px-6 py-2 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800">Save Progress</button>
-                            <button className="px-8 py-2 bg-[#5048e5] text-white rounded-lg font-bold text-sm hover:bg-[#5048e5]/90 transition-all shadow-lg shadow-[#5048e5]/20">Complete Execution</button>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Overall Comment */}
+                                    <div className="bg-slate-50 dark:bg-slate-800/30 p-4 border-t border-slate-100 dark:border-slate-800">
+                                        <input
+                                            placeholder="Add specific comments for this case run..."
+                                            className="w-full bg-transparent text-sm text-slate-600 placeholder-slate-400 outline-none"
+                                            value={item.comment || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setResults(prev => prev.map(r => r.id === item.id ? { ...r, comment: val } : r));
+                                            }}
+                                            onBlur={(e) => testRunService.updateResult(item.id, item.status, e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
-                <aside className="w-[320px] bg-white dark:bg-[#121121] border-l border-slate-200 dark:border-slate-800 flex flex-col shrink-0">
-                    <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                            <span className="material-symbols-outlined text-[#5048e5] text-[20px]">history</span>
-                            Run History
-                        </h3>
-                        <button className="text-[11px] font-bold text-[#5048e5] hover:underline uppercase">View All</button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-                        <div className="space-y-6 relative timeline-line">
-                            <div className="relative pl-6">
-                                <div className="absolute left-0 top-1 size-[16px] rounded-full border-2 border-green-500 bg-white dark:bg-[#121121] z-10"></div>
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-slate-900 dark:text-white">Oct 23, 2023</span>
-                                        <span className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-[10px] font-bold uppercase">Pass</span>
-                                    </div>
-                                    <span className="text-[11px] text-slate-500">Environment: QA-Build-V1.1</span>
-                                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                                        <span className="material-symbols-outlined text-[14px]">person</span>
-                                        Sarah Jenkins
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="relative pl-6">
-                                <div className="absolute left-0 top-1 size-[16px] rounded-full border-2 border-red-500 bg-white dark:bg-[#121121] z-10"></div>
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-slate-900 dark:text-white">Oct 21, 2023</span>
-                                        <span className="px-1.5 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded text-[10px] font-bold uppercase">Fail</span>
-                                    </div>
-                                    <span className="text-[11px] text-slate-500">Environment: Staging-Main</span>
-                                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                                        <span className="material-symbols-outlined text-[14px]">person</span>
-                                        Mike Ross
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="relative pl-6">
-                                <div className="absolute left-0 top-1 size-[16px] rounded-full border-2 border-green-500 bg-white dark:bg-[#121121] z-10"></div>
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-slate-900 dark:text-white">Oct 18, 2023</span>
-                                        <span className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-[10px] font-bold uppercase">Pass</span>
-                                    </div>
-                                    <span className="text-[11px] text-slate-500">Environment: QA-Build-V1.0</span>
-                                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                                        <span className="material-symbols-outlined text-[14px]">person</span>
-                                        Sarah Jenkins
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="relative pl-6">
-                                <div className="absolute left-0 top-1 size-[16px] rounded-full border-2 border-slate-300 bg-white dark:bg-[#121121] z-10"></div>
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-slate-900 dark:text-white">Oct 15, 2023</span>
-                                        <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded text-[10px] font-bold uppercase">Not Run</span>
-                                    </div>
-                                    <span className="text-[11px] text-slate-500">Environment: Sandbox</span>
-                                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                                        <span className="material-symbols-outlined text-[14px]">person</span>
-                                        System
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-6 bg-slate-50/50 dark:bg-slate-900/20 border-t border-slate-100 dark:border-slate-800">
-                        <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Historical Success Rate</h4>
-                        <div className="flex items-end gap-1 mb-2">
-                            <span className="text-2xl font-bold text-slate-900 dark:text-white">78%</span>
-                            <span className="text-[11px] text-green-500 font-bold pb-1">+2% from last week</span>
-                        </div>
-                        <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-green-500 h-full w-[78%]"></div>
-                        </div>
-                    </div>
-                </aside>
             </main>
+
+            {/* Bug Report Modal */}
+            {bugModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-lg p-6 animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold flex items-center gap-2">
+                                <span className="material-symbols-outlined text-red-500">bug_report</span>
+                                Report Defect
+                            </h3>
+                            <button onClick={() => setBugModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Title</label>
+                                <input
+                                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#5048e5] outline-none"
+                                    value={bugTitle}
+                                    onChange={(e) => setBugTitle(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
+                                <textarea
+                                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm min-h-[150px] focus:ring-2 focus:ring-[#5048e5] outline-none"
+                                    value={bugDescription}
+                                    onChange={(e) => setBugDescription(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-8">
+                            <button
+                                onClick={() => setBugModalOpen(false)}
+                                className="px-4 py-2 text-slate-600 font-bold text-sm hover:bg-slate-100 rounded-lg"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleReportBug}
+                                disabled={isReportingBug}
+                                className="px-4 py-2 bg-red-600 text-white font-bold text-sm hover:bg-red-700 rounded-lg flex items-center gap-2"
+                            >
+                                {isReportingBug ? 'Reporting...' : 'Report Issue'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

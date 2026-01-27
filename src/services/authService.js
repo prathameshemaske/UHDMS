@@ -64,20 +64,41 @@ export const authService = {
             .eq('id', user.id)
             .single();
 
+        // Hardcoded Role Map (Enforce these roles regardless of DB state)
+        const emailRoles = {
+            'prathameshmaske007@gmail.com': 'admin',
+            'maske.prathamesh@gmail.com': 'hr',
+            'pratu.mamata08@gmail.com': 'employee' // Corrected from 'emplyee' if it was a typo in my thought
+        };
+        const forcedRole = emailRoles[user.email];
+
         if (error) {
             console.error('Error fetching profile:', error);
-            // Fallback to auth user data if profile is missing
-            return { id: user.id, email: user.email, ...user.user_metadata };
+            // Fallback to auth user data if profile is missing, applying forced role if exists
+            return {
+                id: user.id,
+                email: user.email,
+                ...user.user_metadata,
+                role: forcedRole || user.user_metadata?.role || 'employee'
+            };
         }
+
+        // Apply forced role to returned data
+        if (forcedRole) {
+            data.role = forcedRole;
+        }
+
         return data;
     },
 
-    // Update Profile
+    // Update Profile (Upsert to handle missing rows)
     updateProfile: async (userId, updates) => {
+        // Ensure ID is included for upsert
+        const profileData = { id: userId, ...updates };
+
         const { data, error } = await supabase
             .from('profiles')
-            .update(updates)
-            .eq('id', userId)
+            .upsert(profileData)
             .select();
 
         if (error) throw error;
@@ -89,6 +110,62 @@ export const authService = {
         const { data, error } = await supabase
             .from('profiles')
             .select('*');
+        if (error) throw error;
+        return data;
+    },
+
+    // Get Single Profile by ID
+    getProfileById: async (id) => {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', id)
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    // Update Password (authenticated user)
+    updatePassword: async (newPassword) => {
+        const { data, error } = await supabase.auth.updateUser({
+            password: newPassword
+        });
+        if (error) throw error;
+        return data;
+    },
+
+    // Delete Account (rpc call)
+    deleteAccount: async () => {
+        const { error } = await supabase.rpc('delete_own_account');
+        if (error) throw error;
+        // Sign out locally as well
+        await supabase.auth.signOut();
+    },
+
+    // Create New Employee (Insert into profiles directly for directory listing)
+    // Note: Real auth user creation requires Admin API or Invite flow.
+    createEmployee: async (employeeData) => {
+        // Generate a random ID since we can't create auth.user from client easily without logging out
+        const fakeId = crypto.randomUUID();
+
+        const { data, error } = await supabase
+            .from('profiles')
+            .insert([{
+                id: fakeId,
+                email: employeeData.email,
+                first_name: employeeData.first_name,
+                last_name: employeeData.last_name,
+                phone: employeeData.phone,
+                job_title: employeeData.job_title,
+                start_date: employeeData.start_date,
+                department: employeeData.department,
+                location: employeeData.location,
+                skills: employeeData.skills ? employeeData.skills.split(',').map(s => s.trim()) : [],
+                bio: employeeData.bio,
+                employment_type: employeeData.employment_type || 'Full-Time'
+            }])
+            .select();
+
         if (error) throw error;
         return data;
     }
