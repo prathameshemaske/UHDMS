@@ -61,8 +61,8 @@ const MyTasks = () => {
     };
 
     const pendingTasks = tasks.filter(t => t.status === 'pending');
-    const inProgressTasks = tasks.filter(t => ['in-progress', 'In Progress'].includes(t.status));
-    const toDoTasks = tasks.filter(t => ['to do', 'To Do', 'new'].includes(t.status));
+    const inProgressTasks = tasks.filter(t => ['in-progress', 'In Progress', 'inprogress'].includes(t.status));
+    const toDoTasks = tasks.filter(t => ['to do', 'To Do', 'new', 'todo'].includes(t.status));
     const completedTasks = tasks.filter(t => ['completed', 'Done'].includes(t.status));
 
     return (
@@ -192,7 +192,10 @@ const MyTasks = () => {
                                                             onChange={() => handleStatusChange(task, 'completed')}
                                                         />
                                                     </div>
-                                                    <div className="flex-[2] text-sm font-medium text-slate-900 dark:text-slate-200">{task.title}</div>
+                                                    <div className="flex-[2] flex flex-col">
+                                                        <span className="text-sm font-medium text-slate-900 dark:text-slate-200">{task.title}</span>
+                                                        <span className="text-xs text-slate-500 truncate max-w-[300px]">{task.description}</span>
+                                                    </div>
                                                     <div className="flex-1">
                                                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">{task.project || 'GENERAL'}</span>
                                                     </div>
@@ -242,7 +245,10 @@ const MyTasks = () => {
                                                             onChange={() => handleStatusChange(task, 'completed')}
                                                         />
                                                     </div>
-                                                    <div className="flex-[2] text-sm font-medium text-slate-900 dark:text-slate-200">{task.title}</div>
+                                                    <div className="flex-[2] flex flex-col">
+                                                        <span className="text-sm font-medium text-slate-900 dark:text-slate-200">{task.title}</span>
+                                                        <span className="text-xs text-slate-500 truncate max-w-[300px]">{task.description}</span>
+                                                    </div>
                                                     <div className="flex-1">
                                                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">{task.project || 'GENERAL'}</span>
                                                     </div>
@@ -299,7 +305,10 @@ const MyTasks = () => {
                                                             onChange={() => handleStatusChange(task, 'completed')}
                                                         />
                                                     </div>
-                                                    <div className="flex-[2] text-sm font-medium text-slate-900 dark:text-slate-200">{task.title}</div>
+                                                    <div className="flex-[2] flex flex-col">
+                                                        <span className="text-sm font-medium text-slate-900 dark:text-slate-200">{task.title}</span>
+                                                        <span className="text-xs text-slate-500 truncate max-w-[300px]">{task.description}</span>
+                                                    </div>
                                                     <div className="flex-1">
                                                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">{task.project || 'GENERAL'}</span>
                                                     </div>

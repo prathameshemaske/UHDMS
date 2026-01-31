@@ -121,7 +121,9 @@ const Payslip = () => {
                                 </div>
                             </div>
                         )}
-                        <button className="flex items-center justify-center rounded-lg h-10 px-6 bg-primary text-white text-sm font-bold hover:bg-opacity-90 shadow-lg shadow-primary/20 transition-all">
+                        <button
+                            onClick={() => window.print()}
+                            className="flex items-center justify-center rounded-lg h-10 px-6 bg-primary text-white text-sm font-bold hover:bg-opacity-90 shadow-lg shadow-primary/20 transition-all">
                             <span className="material-symbols-outlined mr-2 text-[20px]">download</span>
                             Download PDF
                         </button>
@@ -251,7 +253,9 @@ const Payslip = () => {
                 </div>
                 {/* Footer Actions (Helper/Secondary) */}
                 <div className="no-print flex justify-center gap-4 py-6 border-t border-[#f1f0f4] dark:border-[#2a2a3a] mt-4">
-                    <button className="flex items-center text-[#656487] hover:text-primary transition-colors text-sm font-medium">
+                    <button
+                        onClick={() => window.print()}
+                        className="flex items-center text-[#656487] hover:text-primary transition-colors text-sm font-medium">
                         <span className="material-symbols-outlined mr-2 text-[18px]">print</span> Print Statement
                     </button>
                     <span className="text-[#dcdce5]">|</span>

@@ -9,6 +9,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     // Submenus
     const [testMenuOpen, setTestMenuOpen] = useState(true);
     const [payrollMenuOpen, setPayrollMenuOpen] = useState(false);
+    const [projectMenuOpen, setProjectMenuOpen] = useState(false);
 
     // Role State
     const [userRole, setUserRole] = useState(null);
@@ -110,14 +111,14 @@ const Sidebar = ({ isOpen, onClose }) => {
                             </>
                         )}
                     </NavLink>
-                    <NavLink to="/announcements" className={navLinkClass}>
+                    {/* <NavLink to="/announcements" className={navLinkClass}>
                         {({ isActive }) => (
                             <>
                                 <span className={iconClass(isActive)}>campaign</span>
                                 {(!collapsed || window.innerWidth < 768) && <span className={`text-sm font-medium ${collapsed ? 'md:hidden' : ''}`}>Announcements</span>}
                             </>
                         )}
-                    </NavLink>
+                    </NavLink> */}
                     <NavLink to="/communication" className={navLinkClass}>
                         {({ isActive }) => (
                             <>
@@ -135,8 +136,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                         )}
                     </NavLink>
 
-                    {/* HR Management - Only for HR/Admin */}
-                    {isHR && (
+                    {/* HR Management - Only for HR/Admin */
+                    /* isHR && (
                         <>
                             {(!collapsed || window.innerWidth < 768) && <div className={`text-[#545095] dark:text-gray-500 text-[11px] font-bold uppercase tracking-wider px-3 mb-2 mt-6 ${collapsed ? 'md:hidden' : ''}`}>HR Management</div>}
                             <NavLink to="/employees" className={navLinkClass}>
@@ -147,105 +148,62 @@ const Sidebar = ({ isOpen, onClose }) => {
                                     </>
                                 )}
                             </NavLink>
+                            <NavLink to="/onboarding" className={navLinkClass}>
+                                {({ isActive }) => (
+                                    <>
+                                        <span className={iconClass(isActive)}>person_add</span>
+                                        {(!collapsed || window.innerWidth < 768) && <span className={`text-sm font-medium ${collapsed ? 'md:hidden' : ''}`}>Onboarding</span>}
+                                    </>
+                                )}
+                            </NavLink>
+                            <NavLink to="/offboarding" className={navLinkClass}>
+                                {({ isActive }) => (
+                                    <>
+                                        <span className={iconClass(isActive)}>person_remove</span>
+                                        {(!collapsed || window.innerWidth < 768) && <span className={`text-sm font-medium ${collapsed ? 'md:hidden' : ''}`}>Offboarding</span>}
+                                    </>
+                                )}
+                            </NavLink>
                         </>
-                    )}
+                    ) */}
 
-                    {/* Payroll Group */}
-                    <div className="flex flex-col gap-1">
+
+
+
+
+                    {/* Projects Group */}
+                    <div className="flex flex-col gap-1 mt-4">
                         <button
-                            onClick={() => {
-                                if (collapsed && window.innerWidth >= 768) {
-                                    setCollapsed(false);
-                                    setPayrollMenuOpen(true);
-                                } else {
-                                    setPayrollMenuOpen(!payrollMenuOpen);
-                                }
-                            }}
+                            onClick={() => setProjectMenuOpen(!projectMenuOpen)}
                             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group w-full text-left text-[#545095] dark:text-gray-300 hover:bg-[#5048e5]/10 hover:text-[#5048e5]`}
                         >
-                            <span className="material-symbols-outlined text-[20px]">payments</span>
+                            <span className="material-symbols-outlined text-[20px]">folder_open</span>
                             {(!collapsed || window.innerWidth < 768) && (
                                 <>
-                                    <span className={`text-sm font-medium flex-1 ${collapsed ? 'md:hidden' : ''}`}>Financials</span>
-                                    <span className={`material-symbols-outlined text-[16px] transition-transform ${payrollMenuOpen ? 'rotate-180' : ''} ${collapsed ? 'md:hidden' : ''}`}>expand_more</span>
+                                    <span className={`text-sm font-medium flex-1 ${collapsed ? 'md:hidden' : ''}`}>Projects</span>
+                                    <span className={`material-symbols-outlined text-[16px] transition-transform ${projectMenuOpen ? 'rotate-180' : ''} ${collapsed ? 'md:hidden' : ''}`}>expand_more</span>
                                 </>
                             )}
                         </button>
 
                         {/* Submenu */}
-                        {((!collapsed || window.innerWidth < 768) && payrollMenuOpen) && (
+                        {((!collapsed || window.innerWidth < 768) && projectMenuOpen) && (
                             <div className="flex flex-col gap-1 pl-4 border-l-2 border-[#e8e8f3] dark:border-[#2d2c44] ml-5 mb-2">
-                                <NavLink to="/payslip-view" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                    <span className="material-symbols-outlined text-[18px]">receipt</span>
-                                    <span>My Payslips</span>
+                                <NavLink to="/projects" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
+                                    <span className="material-symbols-outlined text-[18px]">grid_view</span>
+                                    <span>All Projects</span>
                                 </NavLink>
-                                <NavLink to="/bonus-reimbursement" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                    <span className="material-symbols-outlined text-[18px]">wallet</span>
-                                    <span>Reimburse</span>
+                                <NavLink to="/tasks" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
+                                    <span className="material-symbols-outlined text-[18px]">check_box</span>
+                                    <span>Tasks</span>
                                 </NavLink>
-                                <NavLink to="/tax-declaration" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                    <span className="material-symbols-outlined text-[18px]">description</span>
-                                    <span>Tax Declaration</span>
+                                <NavLink to="/bugs" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
+                                    <span className="material-symbols-outlined text-[18px]">pest_control</span>
+                                    <span>Bug Tracker</span>
                                 </NavLink>
-
-                                {isHR && (
-                                    <>
-                                        <div className="h-px bg-gray-200 dark:bg-gray-700 my-1 mx-2"></div>
-                                        <NavLink to="/payroll-overview" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                            <span className="material-symbols-outlined text-[18px]">dashboard</span>
-                                            <span>Overview</span>
-                                        </NavLink>
-                                        <NavLink to="/payroll-approval" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                            <span className="material-symbols-outlined text-[18px]">rule</span>
-                                            <span>Approvals</span>
-                                        </NavLink>
-                                        <NavLink to="/payout-status" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                            <span className="material-symbols-outlined text-[18px]">account_balance</span>
-                                            <span>Payouts</span>
-                                        </NavLink>
-                                        <NavLink to="/payroll-analytics" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                            <span className="material-symbols-outlined text-[18px]">analytics</span>
-                                            <span>Analytics</span>
-                                        </NavLink>
-                                        <NavLink to="/compliance" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                            <span className="material-symbols-outlined text-[18px]">gavel</span>
-                                            <span>Compliance</span>
-                                        </NavLink>
-                                        <NavLink to="/payroll-settings" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                            <span className="material-symbols-outlined text-[18px]">settings</span>
-                                            <span>Settings</span>
-                                        </NavLink>
-                                    </>
-                                )}
                             </div>
                         )}
                     </div>
-
-                    {(!collapsed || window.innerWidth < 768) && <div className={`text-[#545095] dark:text-gray-500 text-[11px] font-bold uppercase tracking-wider px-3 mb-2 mt-6 ${collapsed ? 'md:hidden' : ''}`}>Development</div>}
-                    <NavLink to="/tasks" className={navLinkClass}>
-                        {({ isActive }) => (
-                            <>
-                                <span className={iconClass(isActive)}>check_box</span>
-                                {(!collapsed || window.innerWidth < 768) && <span className={`text-sm font-medium ${collapsed ? 'md:hidden' : ''}`}>Tasks</span>}
-                            </>
-                        )}
-                    </NavLink>
-                    <NavLink to="/bugs" className={navLinkClass}>
-                        {({ isActive }) => (
-                            <>
-                                <span className={iconClass(isActive)} style={isActive ? { fontVariationSettings: "'FILL' 1" } : {}}>pest_control</span>
-                                {(!collapsed || window.innerWidth < 768) && <span className={`text-sm font-medium ${collapsed ? 'md:hidden' : ''}`}>Bug Tracker</span>}
-                            </>
-                        )}
-                    </NavLink>
-                    <NavLink to="/projects" className={navLinkClass}>
-                        {({ isActive }) => (
-                            <>
-                                <span className={iconClass(isActive)}>grid_view</span>
-                                {(!collapsed || window.innerWidth < 768) && <span className={`text-sm font-medium ${collapsed ? 'md:hidden' : ''}`}>Projects</span>}
-                            </>
-                        )}
-                    </NavLink>
 
                     {/* Test Suites Group */}
                     <div className="flex flex-col gap-1">
@@ -256,7 +214,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                             <span className="material-symbols-outlined text-[20px]">biotech</span>
                             {(!collapsed || window.innerWidth < 768) && (
                                 <>
-                                    <span className={`text-sm font-medium flex-1 ${collapsed ? 'md:hidden' : ''}`}>Test Suites</span>
+                                    <span className={`text-sm font-medium flex-1 ${collapsed ? 'md:hidden' : ''}`}>Test Management</span>
                                     <span className={`material-symbols-outlined text-[16px] transition-transform ${testMenuOpen ? 'rotate-180' : ''} ${collapsed ? 'md:hidden' : ''}`}>expand_more</span>
                                 </>
                             )}
@@ -266,28 +224,21 @@ const Sidebar = ({ isOpen, onClose }) => {
                         {((!collapsed || window.innerWidth < 768) && testMenuOpen) && (
                             <div className="flex flex-col gap-1 pl-4 border-l-2 border-[#e8e8f3] dark:border-[#2d2c44] ml-5 mb-2">
                                 <NavLink to="/test-suites" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                    <span className="material-symbols-outlined text-[18px]">list_alt</span>
-                                    <span>Test Cases</span>
-                                </NavLink>
-                                <NavLink to="/repository" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
                                     <span className="material-symbols-outlined text-[18px]">inventory_2</span>
-                                    <span>Repository</span>
+                                    <span>Test Library</span>
                                 </NavLink>
-                                <NavLink to="/executions" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
-                                    <span className="material-symbols-outlined text-[18px]">play_arrow</span>
-                                    <span>Executions</span>
+                                <NavLink to="/test-plans" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
+                                    <span className="material-symbols-outlined text-[18px]">playlist_play</span>
+                                    <span>Test Plans & Runs</span>
+                                </NavLink>
+                                <NavLink to="/reports?tab=qa" className={({ isActive }) => `flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm ${isActive ? 'text-[#5048e5] font-bold bg-[#5048e5]/5' : 'text-slate-500 hover:text-[#5048e5]'}`}>
+                                    <span className="material-symbols-outlined text-[18px]">analytics</span>
+                                    <span>Test Reports</span>
                                 </NavLink>
                             </div>
                         )}
                     </div>
-                    <NavLink to="/reports" className={navLinkClass}>
-                        {({ isActive }) => (
-                            <>
-                                <span className={iconClass(isActive)}>analytics</span>
-                                {(!collapsed || window.innerWidth < 768) && <span className={`text-sm font-medium ${collapsed ? 'md:hidden' : ''}`}>Reports</span>}
-                            </>
-                        )}
-                    </NavLink>
+
 
                     {(!collapsed || window.innerWidth < 768) && <div className={`text-[#545095] dark:text-gray-500 text-[11px] font-bold uppercase tracking-wider px-3 mb-2 mt-6 ${collapsed ? 'md:hidden' : ''}`}>Employee Zone</div>}
                     <NavLink to="/employee-dashboard" className={navLinkClass}>

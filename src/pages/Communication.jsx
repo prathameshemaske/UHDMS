@@ -170,7 +170,12 @@ const Communication = () => {
                                 className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${activeConversation?.id === channel.id ? 'bg-primary/10 text-primary' : 'text-[#121117] dark:text-white hover:bg-[#f1f0f4] dark:hover:bg-[#2a293a]'}`}
                             >
                                 <span className="material-symbols-outlined text-[20px] fill-icon">tag</span>
-                                <span className="text-sm font-semibold">{channel.name}</span>
+                                <span className="text-sm font-semibold flex-1 truncate">{channel.name}</span>
+                                {channel.unread_count > 0 && (
+                                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                                        {channel.unread_count}
+                                    </span>
+                                )}
                             </button>
                         ))}
                         <button className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#121117] dark:text-white hover:bg-[#f1f0f4] dark:hover:bg-[#2a293a] transition-colors w-full text-left" onClick={() => openNewChatModal('group')}>
@@ -196,7 +201,12 @@ const Communication = () => {
                                     <div className="size-6 bg-center bg-cover rounded-full" style={{ backgroundImage: `url("${dm.avatar_url || `https://ui-avatars.com/api/?name=${dm.name}&background=random`}")` }}></div>
                                     <div className={`absolute -bottom-0.5 -right-0.5 size-2.5 border-2 border-white dark:border-[#1a192b] rounded-full ${dm.is_online ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                                 </div>
-                                <span className="text-sm font-medium truncate">{dm.name}</span>
+                                <span className="text-sm font-medium truncate flex-1">{dm.name}</span>
+                                {dm.unread_count > 0 && (
+                                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                                        {dm.unread_count}
+                                    </span>
+                                )}
                             </button>
                         ))}
                         {conversations.filter(c => c.type === 'direct').length === 0 && (

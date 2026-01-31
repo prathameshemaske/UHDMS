@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { encryptMessage, decryptMessage } from '../utils/encryption';
+import { notificationService } from './notificationService';
 
 export const chatService = {
     // Get all conversations with participant details
@@ -31,7 +32,16 @@ export const chatService = {
 
         if (convError) throw convError;
 
-        return conversations.map(c => {
+        // Fetch unread counts for all conversations in parallel
+        const enrichedConversations = await Promise.all(conversations.map(async (c) => {
+            // Count unread messages for this user in this conversation
+            const { count } = await supabase
+                .from('messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('conversation_id', c.id)
+                .eq('is_read', false)
+                .neq('sender_id', user.id); // Only messages from others
+
             if (c.type === 'direct') {
                 const other = c.participants.find(p => p.user_id !== user.id);
                 if (other && other.profiles) {
@@ -39,14 +49,17 @@ export const chatService = {
                         ...c,
                         name: `${other.profiles.first_name} ${other.profiles.last_name}`,
                         avatar_url: other.profiles.avatar_url || null,
-                        is_online: false
+                        is_online: false, // Online status disabled until schema update
+                        unread_count: count || 0
                     };
                 } else {
-                    return { ...c, name: 'Unknown User', avatar_url: null };
+                    return { ...c, name: 'Unknown User', avatar_url: null, unread_count: count || 0 };
                 }
             }
-            return c;
-        });
+            return { ...c, unread_count: count || 0 };
+        }));
+
+        return enrichedConversations;
     },
 
     // Create Group Conversation (Fixed with RPC)
@@ -148,6 +161,28 @@ export const chatService = {
 
         if (error) throw error;
 
+        // 3. Notify Recipients (Debug: Notify Everyone)
+        // Get conversation participants first
+        const { data: participants } = await supabase
+            .from('conversation_participants')
+            .select('user_id')
+            .eq('conversation_id', conversationId);
+
+        if (participants) {
+            console.log(`Debug: Chat Notification - Total Participants: ${participants.length}`);
+
+            participants.forEach(p => {
+                console.log(`Debug: Notifying recipient ${p.user_id}`);
+                notificationService.createNotification({
+                    userId: p.user_id,
+                    title: 'New Message',
+                    message: `You have a new message`,
+                    type: 'chat',
+                    related_id: conversationId
+                }).catch(err => console.error("Chat notification failed", err));
+            });
+        }
+
         // Return DECRYPTED version to UI immediately so it shows up correctly
         return {
             ...data,
@@ -215,6 +250,18 @@ export const chatService = {
             console.error("Error adding participants", partError);
             // Optionally rollback meeting creation here if critical
         }
+
+        // 3. Send Notifications
+        const invitees = participant_ids.filter(id => id !== user.id);
+        await Promise.all(invitees.map(async (id) => {
+            await notificationService.createNotification({
+                userId: id,
+                title: 'New Meeting Invite',
+                message: `You have been invited to a meeting: ${title}`,
+                type: 'info',
+                related_id: meeting.id
+            });
+        }));
 
         return meeting;
     },

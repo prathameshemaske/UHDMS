@@ -1,279 +1,370 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { authService } from '../services/authService';
+import { settingsService } from '../services/settingsService';
+import { useToast } from '../context/ToastContext';
 import { Link } from 'react-router-dom';
 
+const LoadingSpinner = () => (
+    <div className="flex items-center justify-center p-12">
+        <div className="w-8 h-8 border-4 border-[#5d55e7] border-t-transparent rounded-full animate-spin"></div>
+    </div>
+);
+
 const GlobalSettings = () => {
+    const { showSuccess, showError } = useToast();
+    const [activeTab, setActiveTab] = useState('account');
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    // Form States
+    const [profileData, setProfileData] = useState({
+        first_name: '',
+        last_name: '',
+        job_title: '',
+        phone: '',
+        bio: ''
+    });
+
+    const [passwordData, setPasswordData] = useState({
+        current: '',
+        new: '',
+        confirm: ''
+    });
+
+    const [systemSettings, setSystemSettings] = useState({
+        company_name: '',
+        theme: { primary_color: '#5d55e7' },
+        operational_hours: {}
+    });
+
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    const loadData = async () => {
+        try {
+            setLoading(true);
+            const currentUser = await authService.getCurrentUser();
+            setUser(currentUser);
+            if (currentUser) {
+                setProfileData({
+                    first_name: currentUser.first_name || '',
+                    last_name: currentUser.last_name || '',
+                    job_title: currentUser.job_title || '',
+                    phone: currentUser.phone || '',
+                    bio: currentUser.bio || ''
+                });
+            }
+
+            // Only load system settings if admin
+            if (currentUser?.role === 'admin') {
+                const sysSettings = await settingsService.getSettings();
+                if (sysSettings) {
+                    setSystemSettings(prev => ({ ...prev, ...sysSettings }));
+                }
+            }
+
+        } catch (error) {
+            console.error("Error loading settings:", error);
+            showError("Failed to load settings.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleProfileUpdate = async (e) => {
+        e.preventDefault();
+        setSaving(true);
+        try {
+            await authService.updateProfile(user.id, profileData);
+            showSuccess("Profile updated successfully!");
+            // Update local user state to reflect changes immediately in UI if needed
+            setUser(prev => ({ ...prev, ...profileData }));
+        } catch (error) {
+            showError("Failed to update profile.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handlePasswordUpdate = async (e) => {
+        e.preventDefault();
+        if (passwordData.new !== passwordData.confirm) {
+            showError("New passwords do not match.");
+            return;
+        }
+        setSaving(true);
+        try {
+            await authService.updatePassword(passwordData.new);
+            showSuccess("Password updated successfully!");
+            setPasswordData({ current: '', new: '', confirm: '' });
+        } catch (error) {
+            showError("Failed to update password. " + error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSystemUpdate = async () => {
+        setSaving(true);
+        try {
+            await settingsService.updateSettings(systemSettings);
+            showSuccess("System settings saved!");
+        } catch (error) {
+            showError("Failed to save system settings.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) return <div className="h-screen bg-[#f6f6f8] dark:bg-[#121121]"><LoadingSpinner /></div>;
+
+    const isAdmin = user?.role === 'admin';
+
+    const tabs = [
+        { id: 'account', label: 'Account', icon: 'person' },
+        { id: 'security', label: 'Security', icon: 'lock' },
+        { id: 'notifications', label: 'Notifications', icon: 'notifications' },
+        // Admin Only Tabs
+        ...(isAdmin ? [{ id: 'appearance', label: 'App Appearance', icon: 'palette' }] : []),
+        ...(isAdmin ? [{ id: 'system', label: 'System Config', icon: 'settings_applications' }] : []),
+    ];
+
     return (
-        <div className="flex flex-col min-h-screen font-display bg-background-light dark:bg-background-dark text-[#121117] dark:text-white">
-            {/* TopNavBar Component */}
-            <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#dcdce5] dark:border-[#2d2d3d] bg-white dark:bg-[#1a1a2e] px-10 py-3 sticky top-0 z-50">
-                <div className="flex items-center gap-8">
-                    <div className="flex items-center gap-4 text-primary">
-                        <div className="size-6">
-                            <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M6 6H42L36 24L42 42H6L12 24L6 6Z" fill="currentColor"></path></svg>
-                        </div>
-                        <h2 className="text-[#121117] dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">UHDMS</h2>
+        <div className="flex flex-col min-h-screen bg-[#f6f6f8] dark:bg-[#121121] text-[#0f0e1b] dark:text-white font-sans">
+            <div className="flex flex-1 max-w-[1600px] mx-auto w-full px-4 md:px-8 py-8 gap-8">
+
+                {/* Sidebar Navigation */}
+                <aside className="w-full md:w-64 flex flex-col gap-2 shrink-0">
+                    <div className="mb-6 px-2">
+                        <h1 className="text-2xl font-black tracking-tight text-gray-900 dark:text-white">Settings</h1>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Manage your preferences</p>
                     </div>
-                    <label className="flex flex-col min-w-40 !h-10 max-w-64">
-                        <div className="flex w-full flex-1 items-stretch rounded-lg h-full overflow-hidden border border-[#dcdce5] dark:border-[#2d2d3d]">
-                            <div className="text-[#656487] dark:text-[#a1a1c2] flex bg-[#f1f0f4] dark:bg-[#252538] items-center justify-center pl-4">
-                                <span className="material-symbols-outlined text-xl">search</span>
-                            </div>
-                            <input className="form-input flex w-full min-w-0 flex-1 border-none bg-[#f1f0f4] dark:bg-[#252538] text-[#121117] dark:text-white focus:ring-0 h-full placeholder:text-[#656487] px-4 pl-2 text-base font-normal" placeholder="Search settings..." defaultValue="" />
-                        </div>
-                    </label>
-                </div>
-                <div className="flex flex-1 justify-end gap-6 items-center">
-                    <div className="flex gap-2">
-                        <button className="flex items-center justify-center rounded-lg h-10 w-10 bg-[#f1f0f4] dark:bg-[#252538] text-[#121117] dark:text-white">
-                            <span className="material-symbols-outlined">settings</span>
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold ${activeTab === tab.id
+                                    ? 'bg-[#5048e5] text-white shadow-lg shadow-[#5048e5]/20'
+                                    : 'text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-[#1a192d] hover:text-[#5048e5]'
+                                }`}
+                        >
+                            <span className="material-symbols-outlined text-[20px]">{tab.icon}</span>
+                            {tab.label}
                         </button>
-                        <button className="flex items-center justify-center rounded-lg h-10 w-10 bg-[#f1f0f4] dark:bg-[#252538] text-[#121117] dark:text-white">
-                            <span className="material-symbols-outlined">help</span>
-                        </button>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="text-right hidden md:block">
-                            <p className="text-sm font-bold leading-tight">Alex Rivera</p>
-                            <p className="text-xs text-[#656487]">Admin Account</p>
-                        </div>
-                        <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border border-[#dcdce5]" data-alt="User profile avatar showing a professional portrait" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuD1rN4zp0I-ZrZVCkVB6WfHjpHsGVIC8ChWpB98OTwzR2WRdtnGF7SgRav1DpUwOMXPe2Aq5NzfActD6cTY_FUdqmMfA2Ys04M_IlkQyYz8x8ANekUFPIkK98YOTq0MN9EqPCL9oCpqobHBBZGt0aduLjo_P3OBfK7ORsWHKBVkpq4d3bYEPgQTrP45GA-oWlUJRj3DtMeukOsqkmfmzdwUgAiatbPbxsOVA0ZJzBRQ5CKD_47_9vAg5o4Z3ZdhM2svXx_t1TGed2HI")' }}></div>
-                    </div>
-                </div>
-            </header>
-            {/* Main Content Layout */}
-            <div className="flex flex-1 max-w-[1440px] mx-auto w-full">
-                {/* SideNavBar Component (Left Pane) */}
-                <aside className="w-72 border-r border-[#dcdce5] dark:border-[#2d2d3d] bg-white dark:bg-[#1a1a2e] flex flex-col p-4 shrink-0">
-                    <div className="flex flex-col gap-6">
-                        <div className="flex flex-col px-3">
-                            <h1 className="text-[#121117] dark:text-white text-base font-bold leading-normal">Settings</h1>
-                            <p className="text-[#656487] text-xs font-normal leading-normal">Manage your global preferences</p>
-                        </div>
-                        <nav className="flex flex-col gap-1">
-                            <a className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#656487] hover:bg-[#f1f0f4] dark:hover:bg-[#252538] transition-colors" href="#">
-                                <span className="material-symbols-outlined">person</span>
-                                <span className="text-sm font-medium">Account Settings</span>
-                            </a>
-                            <a className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 text-primary border border-primary/20" href="#">
-                                <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>notifications</span>
-                                <span className="text-sm font-bold">Notification Preferences</span>
-                            </a>
-                            <a className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#656487] hover:bg-[#f1f0f4] dark:hover:bg-[#252538] transition-colors" href="#">
-                                <span className="material-symbols-outlined">security</span>
-                                <span className="text-sm font-medium">Privacy & Security</span>
-                            </a>
-                            <Link className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#656487] hover:bg-[#f1f0f4] dark:hover:bg-[#252538] transition-colors" to="/settings/appearance">
-                                <span className="material-symbols-outlined">palette</span>
-                                <span className="text-sm font-medium">App Appearance</span>
-                            </Link>
-                            <a className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#656487] hover:bg-[#f1f0f4] dark:hover:bg-[#252538] transition-colors" href="#">
-                                <span className="material-symbols-outlined">extension</span>
-                                <span className="text-sm font-medium">Integrations</span>
-                            </a>
-                        </nav>
-                        <div className="mt-8 px-3">
-                            <p className="text-[#656487] text-[10px] font-bold uppercase tracking-wider mb-2">Support</p>
-                            <div className="flex flex-col gap-1">
-                                <a className="flex items-center gap-3 px-3 py-2 text-[#656487] text-sm hover:text-primary transition-colors" href="#">
-                                    <span className="material-symbols-outlined text-lg">description</span>
-                                    Documentation
-                                </a>
-                                <a className="flex items-center gap-3 px-3 py-2 text-[#656487] text-sm hover:text-primary transition-colors" href="#">
-                                    <span className="material-symbols-outlined text-lg">chat</span>
-                                    Contact Support
-                                </a>
-                            </div>
-                        </div>
-                    </div>
+                    ))}
                 </aside>
-                {/* Main Content Area (Right Pane) */}
-                <main className="flex-1 bg-background-light dark:bg-background-dark min-w-0">
-                    <div className="max-w-[960px] mx-auto py-8 px-8">
-                        {/* PageHeading Component */}
-                        <div className="flex flex-wrap justify-between gap-3 mb-6">
-                            <div className="flex min-w-72 flex-col gap-1">
-                                <h2 className="text-[#121117] dark:text-white tracking-tight text-3xl font-bold leading-tight">Notification Preferences</h2>
-                                <p className="text-[#656487] text-sm font-normal">Choose how you want to be notified across different platforms and modules.</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <button className="px-4 py-2 text-sm font-bold text-[#656487] hover:text-[#121117] transition-colors">Reset to default</button>
-                                <button className="bg-primary text-white px-6 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-opacity-90 transition-colors">Save Changes</button>
+
+                {/* Main Content Area */}
+                <main className="flex-1 bg-white dark:bg-[#1a192d] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2c44] p-8 min-h-[600px]">
+
+                    {/* ACCOUNT SETTINGS */}
+                    {activeTab === 'account' && (
+                        <div className="max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            <h2 className="text-xl font-bold mb-1">Personal Information</h2>
+                            <p className="text-gray-500 text-sm mb-8">Update your personal details and public profile.</p>
+
+                            <form onSubmit={handleProfileUpdate} className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">First Name</label>
+                                        <input
+                                            type="text"
+                                            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-[#5048e5]"
+                                            value={profileData.first_name}
+                                            onChange={e => setProfileData({ ...profileData, first_name: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Last Name</label>
+                                        <input
+                                            type="text"
+                                            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-[#5048e5]"
+                                            value={profileData.last_name}
+                                            onChange={e => setProfileData({ ...profileData, last_name: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Job Title</label>
+                                    <input
+                                        type="text"
+                                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-[#5048e5]"
+                                        value={profileData.job_title}
+                                        onChange={e => setProfileData({ ...profileData, job_title: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Bio / About</label>
+                                    <textarea
+                                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-[#5048e5] h-32 resize-none"
+                                        value={profileData.bio}
+                                        onChange={e => setProfileData({ ...profileData, bio: e.target.value })}
+                                        placeholder="Tell us a little about yourself..."
+                                    />
+                                </div>
+
+                                <div className="pt-4 flex justify-end">
+                                    <button
+                                        type="submit"
+                                        disabled={saving}
+                                        className="bg-[#5048e5] hover:bg-[#4338ca] text-white px-6 py-2.5 rounded-lg font-bold shadow-lg shadow-[#5048e5]/20 transition-all disabled:opacity-50"
+                                    >
+                                        {saving ? 'Saving...' : 'Save Changes'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    {/* SECURITY SETTINGS */}
+                    {activeTab === 'security' && (
+                        <div className="max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            <h2 className="text-xl font-bold mb-1">Security</h2>
+                            <p className="text-gray-500 text-sm mb-8">Manage your password and security preferences.</p>
+
+                            <form onSubmit={handlePasswordUpdate} className="space-y-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">New Password</label>
+                                    <input
+                                        type="password"
+                                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-[#5048e5]"
+                                        value={passwordData.new}
+                                        onChange={e => setPasswordData({ ...passwordData, new: e.target.value })}
+                                        required
+                                        minLength={6}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Confirm New Password</label>
+                                    <input
+                                        type="password"
+                                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-[#5048e5]"
+                                        value={passwordData.confirm}
+                                        onChange={e => setPasswordData({ ...passwordData, confirm: e.target.value })}
+                                        required
+                                        minLength={6}
+                                    />
+                                </div>
+
+                                <div className="pt-4 flex justify-end">
+                                    <button
+                                        type="submit"
+                                        disabled={saving}
+                                        className="bg-[#5048e5] hover:bg-[#4338ca] text-white px-6 py-2.5 rounded-lg font-bold shadow-lg shadow-[#5048e5]/20 transition-all disabled:opacity-50"
+                                    >
+                                        {saving ? 'Updating...' : 'Update Password'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    {/* NOTIFICATIONS */}
+                    {activeTab === 'notifications' && (
+                        <div className="max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            <h2 className="text-xl font-bold mb-1">Notifications</h2>
+                            <p className="text-gray-500 text-sm mb-8">Manage how you receive alerts and updates.</p>
+
+                            <div className="space-y-6">
+                                {['Email Notifications', 'Push Notifications', 'Weekly Digest', 'Marketing Emails'].map((item, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#212133] rounded-xl border border-gray-100 dark:border-[#2d2c44]">
+                                        <div>
+                                            <h3 className="font-bold text-gray-900 dark:text-white">{item}</h3>
+                                            <p className="text-xs text-gray-500">Receive updates via {item.toLowerCase().split(' ')[0]}.</p>
+                                        </div>
+                                        <div className="relative inline-block w-12 h-6 transition duration-200 ease-in-out">
+                                            <input type="checkbox" className="peer absolute w-full h-full opacity-0 z-10 cursor-pointer" defaultChecked={idx < 2} />
+                                            <div className="block bg-gray-200 dark:bg-gray-600 w-full h-full rounded-full peer-checked:bg-[#5048e5] transition-colors"></div>
+                                            <div className="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-6"></div>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
-                        {/* Tabs Component */}
-                        <div className="mb-8">
-                            <div className="flex border-b border-[#dcdce5] dark:border-[#2d2d3d] px-2 gap-8 bg-white dark:bg-[#1a1a2e] rounded-t-xl">
-                                <a className="flex flex-col items-center justify-center border-b-[3px] border-b-primary text-primary pb-[13px] pt-4 px-2" href="#">
-                                    <p className="text-sm font-bold tracking-[0.015em]">All Notifications</p>
-                                </a>
-                                <a className="flex flex-col items-center justify-center border-b-[3px] border-b-transparent text-[#656487] pb-[13px] pt-4 px-2 hover:text-[#121117]" href="#">
-                                    <p className="text-sm font-bold tracking-[0.015em]">HR Module</p>
-                                </a>
-                                <a className="flex flex-col items-center justify-center border-b-[3px] border-b-transparent text-[#656487] pb-[13px] pt-4 px-2 hover:text-[#121117]" href="#">
-                                    <p className="text-sm font-bold tracking-[0.015em]">Dev Module</p>
-                                </a>
-                            </div>
-                            {/* Settings Panel */}
-                            <div className="bg-white dark:bg-[#1a1a2e] border-x border-b border-[#dcdce5] dark:border-[#2d2d3d] rounded-b-xl overflow-hidden">
-                                {/* HR Section Header */}
-                                <div className="px-6 pt-8 pb-4 border-b border-gray-50 dark:border-gray-800">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="material-symbols-outlined text-primary">groups</span>
-                                        <h3 className="text-[#121117] dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">HR Notifications</h3>
-                                    </div>
-                                    <p className="text-[#656487] text-xs">Manage leave updates, payroll alerts, and team changes.</p>
-                                </div>
-                                {/* Notification Rows */}
-                                <div className="divide-y divide-[#f1f0f4] dark:divide-[#2d2d3d]">
-                                    {/* Row 1: Leave Updates */}
-                                    <div className="flex items-center justify-between px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#212133] transition-colors">
-                                        <div className="flex flex-col gap-1 pr-4">
-                                            <p className="text-sm font-semibold text-[#121117] dark:text-white">Leave Status Updates</p>
-                                            <p className="text-xs text-[#656487]">Get notified when your leave requests are approved or rejected.</p>
-                                        </div>
-                                        <div className="flex items-center gap-12 shrink-0">
-                                            <div className="flex items-center gap-8">
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <span className="text-[10px] font-bold text-[#656487] uppercase">Email</span>
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input defaultChecked className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" id="hr_leave_email" name="hr_leave_email" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300" htmlFor="hr_leave_email"></label>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <span className="text-[10px] font-bold text-[#656487] uppercase">Push</span>
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input defaultChecked className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" id="hr_leave_push" name="hr_leave_push" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300" htmlFor="hr_leave_push"></label>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <span className="text-[10px] font-bold text-[#656487] uppercase">Slack</span>
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" id="hr_leave_slack" name="hr_leave_slack" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300" htmlFor="hr_leave_slack"></label>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {/* Row 2: Payroll Alerts */}
-                                    <div className="flex items-center justify-between px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#212133] transition-colors">
-                                        <div className="flex flex-col gap-1 pr-4">
-                                            <p className="text-sm font-semibold text-[#121117] dark:text-white">Payroll Alerts</p>
-                                            <p className="text-xs text-[#656487]">Notifications about salary deposits and tax form availability.</p>
-                                        </div>
-                                        <div className="flex items-center gap-12 shrink-0">
-                                            <div className="flex items-center gap-8">
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input defaultChecked className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" id="hr_pay_email" name="hr_pay_email" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300" htmlFor="hr_pay_email"></label>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" id="hr_pay_push" name="hr_pay_push" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300" htmlFor="hr_pay_push"></label>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" id="hr_pay_slack" name="hr_pay_slack" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300" htmlFor="hr_pay_slack"></label>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
+                    )}
+
+                    {/* APPEARANCE (ADMIN) */}
+                    {activeTab === 'appearance' && (
+                        <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            <h2 className="text-xl font-bold mb-1">App Appearance</h2>
+                            <p className="text-gray-500 text-sm mb-8">Customize the look and feel of the platform.</p>
+
+                            <div className="space-y-8">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-900 dark:text-white mb-4">Primary Brand Color</label>
+                                    <div className="flex flex-wrap gap-4">
+                                        {['#5d55e7', '#0ea5e9', '#10b981', '#f43f5e', '#f59e0b', '#0f172a'].map(color => (
+                                            <button
+                                                key={color}
+                                                onClick={() => setSystemSettings(prev => ({ ...prev, theme: { ...prev.theme, primary_color: color } }))}
+                                                className={`w-12 h-12 rounded-full border-2 transition-transform hover:scale-110 ${systemSettings.theme.primary_color === color ? 'border-gray-900 dark:border-white ring-2 ring-offset-2 ring-[#5048e5]' : 'border-transparent'
+                                                    }`}
+                                                style={{ backgroundColor: color }}
+                                            />
+                                        ))}
                                     </div>
                                 </div>
-                                {/* Dev Section Header */}
-                                <div className="px-6 pt-10 pb-4 border-b border-gray-50 dark:border-gray-800">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="material-symbols-outlined text-primary">terminal</span>
-                                        <h3 className="text-[#121117] dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">Dev Notifications</h3>
-                                    </div>
-                                    <p className="text-[#656487] text-xs">Stay updated on task assignments, bug reports, and deployments.</p>
+
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-900 dark:text-white mb-4">Company Name</label>
+                                    <input
+                                        type="text"
+                                        className="w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-[#5048e5]"
+                                        value={systemSettings.company_name}
+                                        onChange={e => setSystemSettings({ ...systemSettings, company_name: e.target.value })}
+                                        placeholder="e.g. Acme Corp"
+                                    />
                                 </div>
-                                <div className="divide-y divide-[#f1f0f4] dark:divide-[#2d2d3d]">
-                                    {/* Row 3: Task Assignments */}
-                                    <div className="flex items-center justify-between px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#212133] transition-colors">
-                                        <div className="flex flex-col gap-1 pr-4">
-                                            <p className="text-sm font-semibold text-[#121117] dark:text-white">Task Assignments</p>
-                                            <p className="text-xs text-[#656487]">Instant alerts when a new task is assigned to you.</p>
-                                        </div>
-                                        <div className="flex items-center gap-12 shrink-0">
-                                            <div className="flex items-center gap-8">
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input defaultChecked className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300"></label>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input defaultChecked className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300"></label>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input defaultChecked className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300"></label>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {/* Row 4: Bug Mentions */}
-                                    <div className="flex items-center justify-between px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#212133] transition-colors">
-                                        <div className="flex flex-col gap-1 pr-4">
-                                            <p className="text-sm font-semibold text-[#121117] dark:text-white">Bug Mentions</p>
-                                            <p className="text-xs text-[#656487]">Be notified when you are tagged in a bug ticket comment.</p>
-                                        </div>
-                                        <div className="flex items-center gap-12 shrink-0">
-                                            <div className="flex items-center gap-8">
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input defaultChecked className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300"></label>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300"></label>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
-                                                        <input defaultChecked className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 border-[#dcdce5] appearance-none cursor-pointer checked:right-0 right-5 transition-all duration-300" type="checkbox" />
-                                                        <label className="toggle-label block overflow-hidden h-5 rounded-full bg-[#dcdce5] cursor-pointer transition-all duration-300"></label>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="p-6 bg-gray-50 dark:bg-[#151525]">
-                                    <div className="flex items-center justify-end gap-3">
-                                        <button className="px-6 py-2.5 text-sm font-bold text-[#656487] hover:text-[#121117] dark:hover:text-white transition-colors rounded-lg">Cancel</button>
-                                        <button className="bg-primary text-white px-8 py-2.5 rounded-lg text-sm font-bold shadow-md hover:brightness-110 transition-all">Save All Changes</button>
-                                    </div>
+
+                                <div className="pt-4 flex justify-end">
+                                    <button
+                                        onClick={handleSystemUpdate}
+                                        disabled={saving}
+                                        className="bg-[#5048e5] hover:bg-[#4338ca] text-white px-6 py-2.5 rounded-lg font-bold shadow-lg shadow-[#5048e5]/20 transition-all disabled:opacity-50"
+                                    >
+                                        {saving ? 'Saving...' : 'Save Appearance'}
+                                    </button>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    )}
+
+                    {/* SYSTEM CONFIG (ADMIN) */}
+                    {activeTab === 'system' && (
+                        <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            <h2 className="text-xl font-bold mb-1">System Configuration</h2>
+                            <p className="text-gray-500 text-sm mb-8">Advanced operational settings.</p>
+
+                            <div className="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl mb-6">
+                                <div className="flex gap-3">
+                                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-500">warning</span>
+                                    <div>
+                                        <h3 className="font-bold text-amber-800 dark:text-amber-500">Caution</h3>
+                                        <p className="text-sm text-amber-700 dark:text-amber-400">Changes here affect the entire organization. Please proceed with care.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Placeholder for complex system configs */}
+                            <div className="space-y-4 opacity-50 pointer-events-none grayscale">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Maintenance Mode</label>
+                                    <div className="flex items-center gap-4">
+                                        <div className="h-6 w-12 bg-gray-200 rounded-full relative">
+                                            <div className="h-6 w-6 bg-white rounded-full shadow-sm absolute left-0 border border-gray-300"></div>
+                                        </div>
+                                        <span className="text-sm font-medium">Disabled</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <p className="mt-4 text-xs text-gray-400 italic">Advanced configurations are currently managed by the DevOps team.</p>
+                        </div>
+                    )}
+
                 </main>
             </div>
-            <style jsx>{`
-                .toggle-checkbox:checked + .toggle-label {
-                    background-color: #5d55e7;
-                }
-                .toggle-checkbox:checked + .toggle-label::after {
-                    transform: translateX(100%);
-                }
-            `}</style>
         </div>
     );
 };

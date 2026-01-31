@@ -5,7 +5,7 @@ import { supabase } from '../../supabaseClient';
 const TaskDetailModal = ({ isOpen, onClose, task, isCreateMode, onSave }) => {
     const [formData, setFormData] = useState({
         title: '',
-        details: '', // Map to 'description' in UI
+        description: '',
         status: 'to do',
         priority: 'Medium',
         project: 'General',
@@ -31,7 +31,7 @@ const TaskDetailModal = ({ isOpen, onClose, task, isCreateMode, onSave }) => {
             if (task && !isCreateMode) {
                 setFormData({
                     title: task.title || '',
-                    details: task.details || '',
+                    description: task.description || '',
                     status: task.status || 'pending',
                     priority: task.priority || 'Medium',
                     project: task.project || 'General',
@@ -40,16 +40,16 @@ const TaskDetailModal = ({ isOpen, onClose, task, isCreateMode, onSave }) => {
                 });
             } else {
                 // Reset for create mode
-                authService.getCurrentUser().then(user => {
-                    setFormData({
-                        title: '',
-                        details: '',
-                        status: 'to do',
-                        priority: 'Medium',
-                        project: 'General',
-                        due_date: '',
-                        assignee_id: '' // Default to Unassigned to avoid FK errors if profile missing
-                    });
+                // Fetch user to set default if needed, or just leave empty
+                // We'll leave assignee empty unless required
+                setFormData({
+                    title: '',
+                    description: '',
+                    status: 'to do',
+                    priority: 'Medium',
+                    project: 'General',
+                    due_date: '',
+                    assignee_id: ''
                 });
             }
         }
@@ -61,35 +61,49 @@ const TaskDetailModal = ({ isOpen, onClose, task, isCreateMode, onSave }) => {
     };
 
     const handleSave = async () => {
+        // Validation
+        if (!formData.title || !formData.title.trim()) {
+            alert("Title is required");
+            return;
+        }
+        if (!formData.description || !formData.description.trim()) {
+            alert("Description is required");
+            return;
+        }
+        if (!formData.project || !formData.project.trim()) {
+            alert("Project is required");
+            return;
+        }
+        if (!formData.due_date) {
+            alert("Due Date is required");
+            return;
+        }
+
         try {
             setLoading(true);
             const user = await authService.getCurrentUser();
 
             const payload = {
                 title: formData.title,
-                details: formData.details,
+                description: formData.description,
                 status: formData.status,
                 priority: formData.priority,
                 project: formData.project,
-                due_date: formData.due_date || null,
-                assignee_id: formData.assignee_id || null // Send null if empty
+                due_date: formData.due_date,
+                assignee_id: formData.assignee_id || null
             };
 
+            // Use taskService to ensure notifications are triggered
             if (isCreateMode) {
                 // Insert
-                const { error } = await supabase
-                    .from('tasks')
-                    .insert([payload]);
-
-                if (error) throw error;
+                await import('../../services/taskService').then(({ taskService }) =>
+                    taskService.createTask(payload)
+                );
             } else {
                 // Update
-                const { error } = await supabase
-                    .from('tasks')
-                    .update(payload)
-                    .eq('id', task.id);
-
-                if (error) throw error;
+                await import('../../services/taskService').then(({ taskService }) =>
+                    taskService.updateTask(task.id, payload)
+                );
             }
 
             if (onSave) onSave();
@@ -167,8 +181,8 @@ const TaskDetailModal = ({ isOpen, onClose, task, isCreateMode, onSave }) => {
                                 </div>
                                 <div className="border border-slate-100 dark:border-slate-800 rounded-lg overflow-hidden h-64">
                                     <textarea
-                                        name="details"
-                                        value={formData.details}
+                                        name="description"
+                                        value={formData.description}
                                         onChange={handleChange}
                                         className="w-full h-full p-4 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border-none focus:ring-0 resize-none"
                                         placeholder="Add task description..."

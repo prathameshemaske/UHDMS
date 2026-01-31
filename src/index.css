@@ -73,3 +73,32 @@ body {
     color: var(--color-foreground);
     font-family: var(--font-sans);
 }
+
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    body {
+        visibility: hidden;
+        background: white;
+    }
+
+    /* Only show the print container */
+    .print-container {
+        visibility: visible;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    /* Ensure content inside is visible */
+    .print-container * {
+        visibility: visible;
+    }
+}

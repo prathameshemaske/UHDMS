@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bugService } from '../services/bugService';
+import { testService } from '../services/testService';
 
 const BugTracker = () => {
     const navigate = useNavigate();
     const [bugs, setBugs] = useState([]);
     const [users, setUsers] = useState([]);
+    const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -29,7 +31,7 @@ const BugTracker = () => {
 
     useEffect(() => {
         const loadInitData = async () => {
-            await Promise.all([fetchBugs(), fetchUsers()]);
+            await Promise.all([fetchBugs(), fetchUsers(), fetchProjects()]);
         };
         loadInitData();
     }, [statusFilter, priorityFilter, severityFilter]);
@@ -59,6 +61,24 @@ const BugTracker = () => {
         }
     };
 
+    const fetchProjects = async () => {
+        try {
+            const folders = await testService.getFolders();
+            // Extract unique project IDs/Names
+            const uniqueProjects = [...new Set(folders.map(f => f.project_id).filter(Boolean))];
+
+            // Default projects if none found or to mix in
+            const defaultProjects = ["HRMS Software", "UHDMS Core", "Mobile App"];
+            const allProjects = [...new Set([...defaultProjects, ...uniqueProjects])];
+
+            setProjects(allProjects);
+        } catch (error) {
+            console.error("Error fetching projects:", error);
+            // Fallback
+            setProjects(["HRMS Software", "UHDMS Core", "Mobile App"]);
+        }
+    };
+
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -69,6 +89,9 @@ const BugTracker = () => {
         if (!formData.title) return;
 
         try {
+            // Lookup assignee ID for notification purposes
+            const assigneeUser = users.find(u => `${u.first_name} ${u.last_name}` === formData.assignee);
+
             const payload = {
                 title: formData.title,
                 description: formData.description,
@@ -76,7 +99,8 @@ const BugTracker = () => {
                 status: formData.status,
                 severity: formData.severity,
                 project: formData.project,
-                assignee: formData.assignee,
+                assignee: formData.assignee, // Keep Name for DB (Legacy)
+                assignee_id: assigneeUser?.id, // Add ID for Notification Service
                 issue_type: formData.issueType,
                 environment: formData.environment,
             };
@@ -115,71 +139,49 @@ const BugTracker = () => {
 
     return (
         <div className="flex flex-col h-full bg-[#f6f6f8] dark:bg-[#121121] text-[#0f0e1b] dark:text-[#f9f8fb] font-display">
-            {/* Top Nav */}
-            <header className="h-16 flex items-center justify-between px-8 border-b border-[#e8e8f3] dark:border-[#2a293d] bg-white dark:bg-[#1a192d] shrink-0">
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 text-[#545095] text-sm font-medium">
-                        <span>UHDMS</span>
-                        <span className="material-symbols-outlined text-xs">chevron_right</span>
-                        <span>Projects</span>
-                        <span className="material-symbols-outlined text-xs">chevron_right</span>
-                        <span className="text-[#0f0e1b] dark:text-white">Bug Tracker</span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-3 mr-4">
-                        <select
-                            className="bg-slate-100 dark:bg-slate-800 border-none rounded text-xs px-2 py-1.5 outline-none"
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                        >
-                            <option value="All">All Status</option>
-                            <option value="To Do">To Do</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Done">Done</option>
-                        </select>
-                        <select
-                            className="bg-slate-100 dark:bg-slate-800 border-none rounded text-xs px-2 py-1.5 outline-none"
-                            value={priorityFilter}
-                            onChange={(e) => setPriorityFilter(e.target.value)}
-                        >
-                            <option value="All">All Priority</option>
-                            <option value="Low">Low</option>
-                            <option value="Medium">Medium</option>
-                            <option value="High">High</option>
-                            <option value="Highest">Highest</option>
-                        </select>
-                        <select
-                            className="bg-slate-100 dark:bg-slate-800 border-none rounded text-xs px-2 py-1.5 outline-none"
-                            value={severityFilter}
-                            onChange={(e) => setSeverityFilter(e.target.value)}
-                        >
-                            <option value="All">All Severity</option>
-                            <option value="Minor">Minor</option>
-                            <option value="Major">Major</option>
-                            <option value="Critical">Critical</option>
-                        </select>
-                    </div>
-
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
+            {/* Filters Bar & Actions */}
+            <div className="p-4 border-b border-[#e8e8f3] dark:border-[#2a293d] bg-white dark:bg-[#1a192d] flex flex-wrap gap-2 items-center shrink-0 justify-between">
+                <div className="flex items-center gap-2">
+                    <select
+                        className="bg-slate-100 dark:bg-slate-800 border-none rounded text-xs px-2 py-1.5 outline-none"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
                     >
-                        <span className="material-symbols-outlined">add</span> Create Bug
-                    </button>
+                        <option value="All">All Status</option>
+                        <option value="To Do">To Do</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Done">Done</option>
+                    </select>
+                    <select
+                        className="bg-slate-100 dark:bg-slate-800 border-none rounded text-xs px-2 py-1.5 outline-none"
+                        value={priorityFilter}
+                        onChange={(e) => setPriorityFilter(e.target.value)}
+                    >
+                        <option value="All">All Priority</option>
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                        <option value="Highest">Highest</option>
+                    </select>
+                    <select
+                        className="bg-slate-100 dark:bg-slate-800 border-none rounded text-xs px-2 py-1.5 outline-none"
+                        value={severityFilter}
+                        onChange={(e) => setSeverityFilter(e.target.value)}
+                    >
+                        <option value="All">All Severity</option>
+                        <option value="Minor">Minor</option>
+                        <option value="Major">Major</option>
+                        <option value="Critical">Critical</option>
+                    </select>
+                    <button onClick={() => { setStatusFilter('All'); setPriorityFilter('All'); setSeverityFilter('All') }} className="text-primary text-xs font-medium hover:underline ml-2">Clear all</button>
                 </div>
-            </header>
 
-            {/* Filters Bar */}
-            <div className="p-4 border-b border-[#e8e8f3] dark:border-[#2a293d] bg-white dark:bg-[#1a192d] flex flex-wrap gap-2 items-center shrink-0">
-                {['Status', 'Priority', 'Assignee', 'Severity'].map(filter => (
-                    <button key={filter} className="flex items-center gap-2 px-3 py-1.5 bg-[#f6f6f8] dark:bg-[#252440] hover:bg-[#e8e8f3] rounded-lg text-xs font-medium transition-colors">
-                        {filter}: <span className="text-primary">All</span>
-                        <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
-                    </button>
-                ))}
-                <div className="h-4 w-px bg-[#e8e8f3] mx-2"></div>
-                <button className="text-primary text-xs font-medium hover:underline">Clear all</button>
+                <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
+                >
+                    <span className="material-symbols-outlined">add</span> Create Bug
+                </button>
             </div>
 
             <div className="flex flex-1 overflow-hidden relative">
@@ -262,9 +264,9 @@ const BugTracker = () => {
                                             onChange={handleInputChange}
                                             className="w-full appearance-none rounded-lg border-slate-200 dark:border-slate-700 dark:bg-slate-800 py-2.5 pl-3 pr-10 text-sm focus:ring-primary focus:border-primary outline-none"
                                         >
-                                            <option>HRMS Software</option>
-                                            <option>UHDMS Core</option>
-                                            <option>Mobile App</option>
+                                            {projects.map(p => (
+                                                <option key={p} value={p}>{p}</option>
+                                            ))}
                                         </select>
                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
                                             <span className="material-symbols-outlined">expand_more</span>

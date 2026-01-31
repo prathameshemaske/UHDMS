@@ -5,12 +5,7 @@ export const dashboardService = {
     getRecentActivities: async (limit = 5) => {
         const { data, error } = await supabase
             .from('activities')
-            .select(`
-                *,
-                user:user_id (
-                    email
-                )
-            `)
+            .select('*') // foreign key might be missing, so we skip joining user for now
             .order('created_at', { ascending: false })
             .limit(limit);
 

@@ -37,5 +37,28 @@ export const reimbursementService = {
 
         if (error) throw error;
         return data;
+    },
+
+    // Bulk Approve
+    bulkApprove: async (ids) => {
+        const { data, error } = await supabase
+            .from('reimbursements')
+            .update({ status: 'approved' })
+            .in('id', ids)
+            .select();
+
+        if (error) throw error;
+        return data;
+    },
+
+    // Delete
+    delete: async (id) => {
+        const { error } = await supabase
+            .from('reimbursements')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        return true;
     }
 };

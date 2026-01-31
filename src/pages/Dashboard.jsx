@@ -127,7 +127,7 @@ const Dashboard = () => {
                     <div className="bg-white dark:bg-[#1a192d] rounded-xl border border-[#e8e8f3] dark:border-[#2d2c44] shadow-sm p-6">
                         <div className="flex items-center justify-between mb-6">
                             <h4 className="text-lg font-bold text-[#0f0e1b] dark:text-white">Recent Activity</h4>
-                            <button className="text-[#5048e5] text-sm font-bold hover:underline">View all</button>
+                            <Link to="/reports" className="text-[#5048e5] text-sm font-bold hover:underline">View all</Link>
                         </div>
                         <div className="space-y-6">
                             {activities.length === 0 ? (
@@ -165,12 +165,12 @@ const Dashboard = () => {
                 </div>
 
                 <div className="space-y-8">
-                    {/* Upcoming Interviews */}
+                    {/* Upcoming Calls */}
                     <div className="bg-white dark:bg-[#1a192d] rounded-xl border border-[#e8e8f3] dark:border-[#2d2c44] shadow-sm p-6">
-                        <h4 className="text-lg font-bold text-[#0f0e1b] dark:text-white mb-6">Upcoming Interviews</h4>
+                        <h4 className="text-lg font-bold text-[#0f0e1b] dark:text-white mb-6">Upcoming Calls</h4>
                         <div className="space-y-4">
                             {interviews.length === 0 ? (
-                                <p className="text-sm text-slate-500">No upcoming interviews.</p>
+                                <p className="text-sm text-slate-500">No scheduled calls.</p>
                             ) : (
                                 interviews.map(interview => (
                                     <div key={interview.id} className="p-4 rounded-lg bg-[#f6f6f8] dark:bg-[#2d2c44] border border-transparent hover:border-[#5048e5]/20 transition-all cursor-pointer">
@@ -184,9 +184,9 @@ const Dashboard = () => {
                                 ))
                             )}
                         </div>
-                        <button className="w-full mt-6 py-2.5 text-sm font-bold text-[#5048e5] border border-[#5048e5]/20 rounded-lg hover:bg-[#5048e5]/5 transition-colors">
-                            View HR Calendar
-                        </button>
+                        <Link to="/calendar" className="block w-full text-center mt-6 py-2.5 text-sm font-bold text-[#5048e5] border border-[#5048e5]/20 rounded-lg hover:bg-[#5048e5]/5 transition-colors">
+                            Calendar
+                        </Link>
                     </div>
 
                     {/* Announcement Card */}

@@ -74,7 +74,8 @@ const IssueDetail = () => {
 
     const handleUpdateField = async (field, value) => {
         try {
-            const updated = await bugService.updateBug(id, { [field]: value });
+            const user = await authService.getCurrentUser();
+            const updated = await bugService.updateBug(id, { [field]: value }, user.id);
             setBug(prev => ({ ...prev, [field]: updated[field] }));
 
             // Refresh history
@@ -166,26 +167,7 @@ const IssueDetail = () => {
     return (
         <div className="bg-[#f6f6f8] min-h-screen text-slate-900 font-display">
             {/* Header */}
-            <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3 sticky top-0 z-50">
-                <div className="flex items-center gap-8">
-                    <div className="flex items-center gap-2 text-[#4F46E5]">
-                        <div className="size-6">
-                            <svg fill="currentColor" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M6 6H42L36 24L42 42H6L12 24L6 6Z"></path></svg>
-                        </div>
-                        <h1 className="text-slate-900 text-lg font-bold tracking-tight">UHDMS</h1>
-                    </div>
-                    <nav className="hidden md:flex items-center gap-6">
-                        <Link to="/" className="text-slate-600 text-sm font-medium hover:text-[#4F46E5] transition-colors">Dashboard</Link>
-                        <Link to="/bugs" className="text-[#4F46E5] text-sm font-bold border-b-2 border-[#4F46E5] py-4 -mb-3">Issues</Link>
-                        <a className="text-slate-600 text-sm font-medium hover:text-[#4F46E5] transition-colors" href="#">Projects</a>
-                    </nav>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="size-8 rounded-full bg-slate-200 overflow-hidden">
-                        <img src={currentUser?.avatar_url || `https://ui-avatars.com/api/?name=User&background=random`} alt="Profile" className="w-full h-full object-cover" />
-                    </div>
-                </div>
-            </header>
+
 
             <main className="max-w-[1440px] mx-auto px-6 py-6">
                 <div className="flex items-center justify-between mb-6">

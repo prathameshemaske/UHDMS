@@ -89,7 +89,7 @@ const Employees = () => {
                         <Link className="text-gray-600 dark:text-gray-300 text-sm font-semibold hover:text-[#5048e5] transition-colors" to="/reports">Reports</Link>
                     </nav>
                     {/* Replaced Icons with Add Button as requested */}
-                    <Link to="/employees/add" className="flex items-center gap-2 px-4 h-10 rounded-lg bg-[#5048e5] text-white font-bold text-sm shadow-md hover:bg-[#5048e5]/90 transition-all">
+                    <Link to="/onboarding?create=true" className="flex items-center gap-2 px-4 h-10 rounded-lg bg-[#5048e5] text-white font-bold text-sm shadow-md hover:bg-[#5048e5]/90 transition-all">
                         <span className="material-symbols-outlined text-[20px]">add</span>
                         Add Employee
                     </Link>

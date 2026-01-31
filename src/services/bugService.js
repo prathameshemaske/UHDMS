@@ -29,8 +29,11 @@ export const bugService = {
     createBug: async (bugData) => {
         const { data: { user } } = await supabase.auth.getUser();
 
+        // Extract assignee_id for notification, do not send to DB if column doesn't exist
+        const { assignee_id, ...dbPayload } = bugData;
+
         const payload = {
-            ...bugData,
+            ...dbPayload,
             reporter_id: user?.id
         };
 
@@ -41,6 +44,22 @@ export const bugService = {
             .single();
 
         if (error) throw error;
+
+        // Notify Assignee
+        if (bugData.assignee_id) {
+            console.log("Debug: Triggering Bug Notification for assignee:", bugData.assignee_id);
+            // Use dynamic import to avoid circular dependency
+            import('./notificationService').then(({ notificationService }) => {
+                notificationService.createNotification({
+                    userId: bugData.assignee_id,
+                    title: 'New Bug Assigned',
+                    message: `You have been assigned a new bug: ${payload.title}`,
+                    type: 'bug',
+                    related_id: data.id
+                }).catch(err => console.error("Bug notification failed", err));
+            });
+        }
+
         return data;
     },
     // Fetch single bug details with comments (Manual Join Version)
@@ -262,13 +281,29 @@ export const bugService = {
                 new_value: String(updates[key])
             }));
 
-            // Check if history table exists/is accessible by trying insert
             try {
                 if (historyEntries.length > 0) {
                     await supabase.from('bug_history').insert(historyEntries);
                 }
+
+                // 4. Notify Reporter
+                console.log(`Debug: Checking Bug Notification - Reporter: ${oldData.reporter_id}, Updater: ${user.id}`);
+                if (oldData.reporter_id) { // Allow self-notification for debug
+                    console.log("Debug: Sending Bug Notification...");
+                    // Use dynamic import correctly or switch to top-level if possible
+                    import('./notificationService').then(({ notificationService }) => {
+                        notificationService.createNotification({
+                            userId: oldData.reporter_id,
+                            title: 'Bug Updated',
+                            message: `Bug "${oldData.title}" has been updated`,
+                            type: 'bug',
+                            related_id: id
+                        }).catch(err => console.error("Notification failed", err));
+                    });
+                }
+
             } catch (e) {
-                console.warn("Failed to save bug history:", e);
+                console.warn("Failed to save bug history or notify:", e);
             }
         }
         return data;

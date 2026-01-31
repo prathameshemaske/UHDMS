@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { authService } from '../../services/authService';
 
-const RoleGuard = ({ allowedRoles }) => {
+const RoleGuard = ({ allowedRoles, children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [authorized, setAuthorized] = useState(false);
@@ -44,7 +44,7 @@ const RoleGuard = ({ allowedRoles }) => {
         </div>;
     }
 
-    return <Outlet />;
+    return children ? children : <Outlet />;
 };
 
 export default RoleGuard;
